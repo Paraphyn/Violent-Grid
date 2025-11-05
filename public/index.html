@@ -767,6 +767,7 @@
                     gameOver: { file: 'game-over.wav', loop: false },
                     enemyHit: { file: 'enemy-hit.wav', loop: false },
                     enemyDeath: { file: 'enemy-death.wav', loop: false },
+                    SnakeEatsApple: { file: 'snake-eats-apple.wav', loop: false },
                     boss_hit: { file: 'boss-hit.wav', loop: false },
                     bossDefeated: { file: 'game-over.wav', loop: false },
                     enemyShoot: { file: 'enemy-shoot.wav', loop: false },
@@ -1443,14 +1444,14 @@
 
         // Enemy bullet management
         class EnemyBullet {
-            constructor(x, y, dx, dy) {
+            constructor(x, y, dx, dy, damage = 15) {
                 this.x = x;
                 this.y = y;
                 this.dx = dx;
                 this.dy = dy;
                 this.radius = 6;
                 this.life = 200;
-                this.damage = 15;
+                this.damage = damage;
             }
 
             update(canvas, effects) {
@@ -1574,11 +1575,13 @@
         const VECTOR_SNAKE_SETTINGS = Object.freeze({
             headHp: 3000,
             segmentHp: 500,
-            headRadius: 26,
-            segmentRadius: 20,
-            segmentSpacing: 34,
+            headRadius: 22,
+            headSize: 44,
+            segmentRadius: 22,
+            segmentSize: 44,
+            segmentSpacing: 44,
             movementSpeed: 3.6,
-            gridSize: 48,
+            gridSize: 44,
             turnIntervalMs: 1600,
             turnIntervalVarianceMs: 600,
             margin: 90,
@@ -1590,7 +1593,12 @@
             appleSpawnIntervalMs: 7000,
             appleSpawnIntervalVarianceMs: 2000,
             growthPerApple: 2,
-            maxApples: 2
+            maxApples: 2,
+            speedIncreaseIntervalMs: 5000,
+            speedIncreasePercent: 0.02,
+            appleShootIntervalMs: 4000,
+            appleBulletSpeed: 5,
+            appleBulletDamage: 25
         });
 
         const BOSS_SELECTION = Object.freeze({
@@ -3150,6 +3158,9 @@
                 this.headRecentDamage = 0;
                 this.headRecentDamageFade = 0;
                 this._beamHitSet = new WeakSet();
+                this.spawnTimestamp = Date.now();
+                this.speedMultiplier = 1;
+                this.targetAppleId = null;
                 this._initSnake();
             }
 
@@ -3160,24 +3171,30 @@
                 const margin = Math.max(settings.margin, safeY);
                 const grid = settings.gridSize || 48;
                 const headX = Math.round((canvas.width / 2) / grid) * grid;
-                const headY = Math.round(margin / grid) * grid;
+                const headY = Math.max(margin, Math.ceil(margin / grid) * grid);
+                const headSize = settings.headSize || (settings.headRadius ? settings.headRadius * 2 : settings.segmentSize || (settings.segmentRadius || 20) * 2);
+                const headRadius = settings.headRadius || headSize / 2;
                 const head = {
                     type: 'head',
                     x: headX,
                     y: headY,
-                    radius: settings.headRadius,
+                    radius: headRadius,
+                    size: headSize,
                     hp: settings.headHp,
                     maxHp: settings.headHp,
                     damageFlash: 0
                 };
                 this.segments.push(head);
                 const initialTail = 6;
+                const segmentSize = settings.segmentSize || (settings.segmentRadius || 20) * 2;
+                const segmentRadius = settings.segmentRadius || segmentSize / 2;
                 for (let i = 1; i <= initialTail; i++) {
                     this.segments.push({
                         type: 'body',
                         x: headX - i * settings.segmentSpacing,
                         y: headY,
-                        radius: settings.segmentRadius,
+                        radius: segmentRadius,
+                        size: segmentSize,
                         hp: settings.segmentHp,
                         maxHp: settings.segmentHp,
                         damageFlash: 0
@@ -3186,7 +3203,7 @@
                 // Seed path history from initial segment layout (head -> tail order)
                 for (let i = 0; i < this.segments.length; i++) {
                     const seg = this.segments[i];
-                    this.pathPoints.push({ x: seg.x, y: seg.y });
+                    this.pathPoints.push({ x: Math.round(seg.x), y: Math.round(seg.y) });
                 }
             }
 
@@ -3207,36 +3224,52 @@
             update() {
                 if (!this.alive) return false;
                 const now = Date.now();
-                if (now >= this.nextTurnTime) {
+                const head = this.segments[0];
+                if (!head) return false;
+
+                const targetApple = this._findNearestApple(head);
+                if (targetApple) {
+                    this._steerTowardsApple(targetApple, now);
+                } else if (now >= this.nextTurnTime) {
                     this._chooseDirection(false);
                 }
 
+                this._updateSpeedMultiplier(now);
+
                 const motion = getMotionScale();
                 const timeScale = getTimeScale();
-                const head = this.segments[0];
-                if (!head) return false;
-                const speed = (this.settings.movementSpeed || 3.5) * motion * timeScale;
-                this._moveHead(speed);
+                const baseSpeed = this.settings.movementSpeed || 3.5;
+                const speed = baseSpeed * this.speedMultiplier * motion * timeScale;
+                this._moveHead(speed, targetApple, now);
                 this.pathPoints.unshift({ x: head.x, y: head.y });
                 if (this.pathPoints.length > 1) this._trimPath();
                 this._updateSegmentsFromPath();
                 this._updateDamageFlash();
 
                 const settings = this.settings;
-                if (this.apples.length < settings.maxApples) {
-                    if (now >= this.nextAppleTime) {
-                        this._spawnAppleNearPlayer();
-                        this.nextAppleTime = now + this._nextAppleDelay();
-                    }
+                if (this.apples.length < settings.maxApples && now >= this.nextAppleTime) {
+                    this._spawnAppleNearPlayer();
+                    this.nextAppleTime = now + this._nextAppleDelay();
                 }
                 this._updateApples(now);
                 this._checkAppleConsumption();
                 return true;
             }
 
-            _chooseDirection(forceTurn) {
+            _chooseDirection(forceTurn, targetApple = null) {
                 const head = this.segments[0];
                 if (!head) return;
+                if (targetApple) {
+                    const desired = this._selectDirectionTowards(head, targetApple, forceTurn);
+                    if (desired) {
+                        if (desired.dx !== this.direction.dx || desired.dy !== this.direction.dy) {
+                            this.direction = desired;
+                            this._alignHeadToGrid();
+                        }
+                        this.nextTurnTime = Date.now() + this._nextTurnDelay();
+                        return;
+                    }
+                }
                 const options = [
                     { dx: 1, dy: 0 },
                     { dx: -1, dy: 0 },
@@ -3291,7 +3324,7 @@
                 head.y = Math.max(safeTop, Math.min(canvas.height - margin, head.y));
             }
 
-            _moveHead(step) {
+            _moveHead(step, targetApple, now) {
                 const head = this.segments[0];
                 if (!head) return;
                 const settings = this.settings;
@@ -3301,12 +3334,130 @@
                 let nextX = head.x + this.direction.dx * step;
                 let nextY = head.y + this.direction.dy * step;
                 if (nextX < margin || nextX > canvas.width - margin || nextY < safeTop || nextY > canvas.height - margin) {
-                    this._chooseDirection(true);
+                    this._chooseDirection(true, targetApple);
+                    if (now && targetApple) {
+                        this.targetAppleId = targetApple.id || null;
+                    }
                     nextX = head.x + this.direction.dx * step;
                     nextY = head.y + this.direction.dy * step;
+                    if (nextX < margin || nextX > canvas.width - margin || nextY < safeTop || nextY > canvas.height - margin) {
+                        this._chooseDirection(true);
+                        nextX = head.x + this.direction.dx * step;
+                        nextY = head.y + this.direction.dy * step;
+                    }
                 }
                 head.x = Math.max(margin, Math.min(canvas.width - margin, nextX));
                 head.y = Math.max(safeTop, Math.min(canvas.height - margin, nextY));
+                head.x = Math.round(head.x);
+                head.y = Math.round(head.y);
+            }
+
+            _updateSpeedMultiplier(now) {
+                const interval = this.settings.speedIncreaseIntervalMs || 0;
+                const percent = this.settings.speedIncreasePercent || 0;
+                if (!interval || interval <= 0 || !percent || percent <= 0) {
+                    this.speedMultiplier = 1;
+                    return;
+                }
+                const elapsed = Math.max(0, now - this.spawnTimestamp);
+                const steps = Math.floor(elapsed / interval);
+                const base = 1 + percent;
+                this.speedMultiplier = Math.pow(base, steps);
+            }
+
+            _findNearestApple(head) {
+                if (!head || this.apples.length === 0) return null;
+                let nearest = null;
+                let nearestDistSq = Infinity;
+                for (let i = 0; i < this.apples.length; i++) {
+                    const apple = this.apples[i];
+                    const dx = apple.x - head.x;
+                    const dy = apple.y - head.y;
+                    const distSq = dx * dx + dy * dy;
+                    if (distSq < nearestDistSq) {
+                        nearestDistSq = distSq;
+                        nearest = apple;
+                    }
+                }
+                this.targetAppleId = nearest ? nearest.id || null : null;
+                return nearest;
+            }
+
+            _selectDirectionTowards(head, apple, forceTurn = false) {
+                if (!head || !apple) return null;
+                const threshold = 4;
+                const dx = apple.x - head.x;
+                const dy = apple.y - head.y;
+                const candidates = [];
+                if (Math.abs(dx) > threshold) {
+                    candidates.push({ dx: dx > 0 ? 1 : -1, dy: 0, weight: Math.abs(dx) });
+                }
+                if (Math.abs(dy) > threshold) {
+                    candidates.push({ dx: 0, dy: dy > 0 ? 1 : -1, weight: Math.abs(dy) });
+                }
+                if (candidates.length === 0) return null;
+                candidates.sort((a, b) => b.weight - a.weight);
+
+                const viable = candidates.filter(dir => this._directionKeepsInBounds(head, dir));
+                const pool = viable.length > 0 ? viable : candidates;
+
+                const current = pool.find(dir => dir.dx === this.direction.dx && dir.dy === this.direction.dy);
+                if (current) return { dx: current.dx, dy: current.dy };
+
+                if (!forceTurn) {
+                    const nonOpposite = pool.find(dir => !this._isOpposite(dir, this.direction));
+                    if (nonOpposite) {
+                        return { dx: nonOpposite.dx, dy: nonOpposite.dy };
+                    }
+                }
+
+                const fallback = pool[0];
+                return fallback ? { dx: fallback.dx, dy: fallback.dy } : null;
+            }
+
+            _steerTowardsApple(apple, now) {
+                const head = this.segments[0];
+                if (!head || !apple) return;
+                const desired = this._selectDirectionTowards(head, apple, false);
+                if (!desired) return;
+                if (desired.dx === this.direction.dx && desired.dy === this.direction.dy) return;
+                this.direction = desired;
+                this._alignHeadToGrid();
+                this.nextTurnTime = now + this._nextTurnDelay();
+                this.targetAppleId = apple.id || null;
+            }
+
+            _maybeShootApple(apple, now) {
+                if (!apple || !this.game || !Array.isArray(this.game.enemyBullets)) return;
+                const interval = this.settings.appleShootIntervalMs || 4000;
+                if (apple.nextShotTime === undefined) {
+                    apple.nextShotTime = now + interval;
+                }
+                if (now < apple.nextShotTime) return;
+                this._fireAppleBullets(apple);
+                apple.nextShotTime = now + interval;
+            }
+
+            _fireAppleBullets(apple) {
+                if (!apple || !this.game || !Array.isArray(this.game.enemyBullets)) return;
+                const speed = this.settings.appleBulletSpeed || 5;
+                const damage = this.settings.appleBulletDamage || 25;
+                const origins = [
+                    { dx: speed, dy: 0 },
+                    { dx: -speed, dy: 0 },
+                    { dx: 0, dy: speed },
+                    { dx: 0, dy: -speed }
+                ];
+                for (let i = 0; i < origins.length; i++) {
+                    const dir = origins[i];
+                    this.game.enemyBullets.push(new EnemyBullet(apple.x, apple.y, dir.dx, dir.dy, damage));
+                }
+                if (this.game.audio) {
+                    this.game.audio.playSound('enemyShoot');
+                }
+                if (this.game.effects && typeof this.game.effects.createBulletExplosion === 'function') {
+                    this.game.effects.createBulletExplosion(apple.x, apple.y, '#FFC13B');
+                }
             }
 
             _trimPath() {
@@ -3348,8 +3499,8 @@
                 for (let i = 1; i < this.segments.length; i++) {
                     const target = this._samplePath(i * spacing);
                     if (target) {
-                        this.segments[i].x = target.x;
-                        this.segments[i].y = target.y;
+                        this.segments[i].x = Math.round(target.x);
+                        this.segments[i].y = Math.round(target.y);
                     }
                 }
             }
@@ -3390,7 +3541,8 @@
                     maxHp: settings.appleHp,
                     damageFlash: 0,
                     spawnTime: Date.now(),
-                    pulse: Math.random() * Math.PI * 2
+                    pulse: Math.random() * Math.PI * 2,
+                    nextShotTime: Date.now() + (settings.appleShootIntervalMs || 4000)
                 };
                 this.apples.push(apple);
                 if (this.game.effects) {
@@ -3406,7 +3558,9 @@
                     apple.pulse = (apple.pulse + 0.12 * timeScale) % (Math.PI * 2);
                     if (now - apple.spawnTime >= lifeMs) {
                         this.apples.splice(i, 1);
+                        continue;
                     }
+                    this._maybeShootApple(apple, now);
                 }
             }
 
@@ -3446,7 +3600,7 @@
                     this.game.effects.createExplosion(apple.x, apple.y, 'square', apple.radius * 1.5);
                 }
                 if (this.game.audio) {
-                    this.game.audio.playSound('boss_hit');
+                    this.game.audio.playSound('SnakeEatsApple');
                 }
             }
 
@@ -3459,14 +3613,15 @@
                         type: 'body',
                         x: tail ? tail.x : 0,
                         y: tail ? tail.y : 0,
-                        radius: settings.segmentRadius,
+                        radius: settings.segmentRadius || (settings.segmentSize || 40) / 2,
+                        size: settings.segmentSize || (settings.segmentRadius || 20) * 2,
                         hp: settings.segmentHp,
                         maxHp: settings.segmentHp,
                         damageFlash: 0
                     };
                     this.segments.push(seg);
                     if (tail) {
-                        this.pathPoints.push({ x: tail.x, y: tail.y });
+                        this.pathPoints.push({ x: Math.round(tail.x), y: Math.round(tail.y) });
                     }
                 }
             }
@@ -3676,24 +3831,31 @@
             _drawSnake(ctx) {
                 for (let i = this.segments.length - 1; i >= 0; i--) {
                     const seg = this.segments[i];
+                    if (!seg) continue;
                     ctx.save();
                     const isHead = seg.type === 'head';
-                    ctx.shadowBlur = isHead ? 24 : 16;
-                    ctx.shadowColor = isHead ? '#ff2a70' : '#22ffee';
-                    ctx.fillStyle = seg.damageFlash > 0 ? '#ffffff' : (isHead ? '#ff2a70' : '#22ffee');
-                    ctx.strokeStyle = isHead ? '#ff7aa6' : '#66ffef';
-                    ctx.lineWidth = isHead ? 3 : 2;
-                    ctx.beginPath();
-                    ctx.arc(seg.x, seg.y, seg.radius, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
+                    const baseSize = seg.size || (seg.radius ? seg.radius * 2 : 40);
+                    const drawSize = Math.max(6, baseSize - 1);
+                    const half = drawSize / 2;
+                    const startX = Math.round(seg.x - half);
+                    const startY = Math.round(seg.y - half);
+                    const bodyFill = '#8b0000';
+                    const headFill = '#ff2b2b';
+                    ctx.shadowBlur = isHead ? 28 : 18;
+                    ctx.shadowColor = isHead ? 'rgba(255, 40, 40, 0.85)' : 'rgba(120, 0, 0, 0.6)';
+                    ctx.fillStyle = seg.damageFlash > 0 ? '#ffffff' : (isHead ? headFill : bodyFill);
+                    ctx.strokeStyle = isHead ? '#ff5757' : '#4c0000';
+                    ctx.lineWidth = 1;
+                    ctx.fillRect(startX, startY, drawSize, drawSize);
+                    ctx.strokeRect(startX, startY, drawSize, drawSize);
+
                     if (isHead) {
+                        const eyeRadius = Math.max(3, drawSize * 0.14);
+                        ctx.shadowBlur = 20;
+                        ctx.shadowColor = 'rgba(255, 80, 80, 0.95)';
+                        ctx.fillStyle = '#ff4444';
                         ctx.beginPath();
-                        ctx.fillStyle = '#0d0d16';
-                        ctx.arc(seg.x + seg.radius * 0.4, seg.y - seg.radius * 0.2, seg.radius * 0.3, 0, Math.PI * 2);
-                        ctx.fill();
-                        ctx.beginPath();
-                        ctx.arc(seg.x - seg.radius * 0.4, seg.y - seg.radius * 0.2, seg.radius * 0.3, 0, Math.PI * 2);
+                        ctx.arc(seg.x, seg.y, eyeRadius, 0, Math.PI * 2);
                         ctx.fill();
                     }
                     ctx.restore();
