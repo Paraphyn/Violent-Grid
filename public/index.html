@@ -5276,6 +5276,9 @@
             }
 
             triggerLevelUpSelection() {
+                if (this.gameOver) {
+                    return;
+                }
                 // Pause game && show upgrade UI
                 this.paused = true;
                 this.upgradePause = true;
