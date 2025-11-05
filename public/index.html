@@ -3705,9 +3705,12 @@
                     }
                     return;
                 }
-                this._grow(this.settings.growthPerApple || 2);
-                this._triggerAppleBlast(apple.x, apple.y);
-                if (this.game.effects) {
+                  this._grow(this.settings.growthPerApple || 2);
+                  this._triggerAppleBlast(apple.x, apple.y);
+                  if (this.game && typeof this.game.triggerGridBlink === 'function') {
+                      this.game.triggerGridBlink(1.25, 640);
+                  }
+                  if (this.game.effects) {
                     this.game.effects.createExplosion(apple.x, apple.y, 'square', apple.radius * 1.5);
                 }
                 if (this.game.audio) {
@@ -4309,6 +4312,14 @@
                 this.gridOffsetX = 0;
                 this.gridOffsetY = 0;
                 this.gridSpeed = 0.5; // Speed of grid movement
+
+                // Background grid blink state
+                this.gridBlink = {
+                    startTime: 0,
+                    activeUntil: 0,
+                    durationMs: 520,
+                    intensity: 0
+                };
                 
                 // Track player position for parallax effect
                 this.lastPlayerX = 0;
@@ -4702,6 +4713,25 @@
                 this.lastPlayerX = this.player.x;
                 this.lastPlayerY = this.player.y;
             }
+
+              triggerGridBlink(intensity = 1, durationMs = null) {
+                  if (!this.gridBlink) {
+                      this.gridBlink = {
+                          startTime: 0,
+                          activeUntil: 0,
+                          durationMs: 520,
+                          intensity: 0
+                      };
+                  }
+                  const now = Date.now();
+                  const duration = Math.max(120, Number.isFinite(durationMs) && durationMs > 0 ? durationMs : (this.gridBlink.durationMs || 520));
+                  const safeIntensity = Math.max(0, intensity);
+                  this.gridBlink.startTime = now;
+                  this.gridBlink.activeUntil = now + duration;
+                  this.gridBlink.durationMs = duration;
+                  const previousIntensity = this.gridBlink.intensity || 0;
+                  this.gridBlink.intensity = Math.min(1.75, Math.max(previousIntensity, safeIntensity));
+              }
             
             drawInfiniteGrid() {
                 const gridSize = 40;
@@ -4737,6 +4767,47 @@
                 this.ctx.fillStyle = this.gridPattern;
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
                 this.ctx.restore();
+
+                  const blinkState = this.gridBlink;
+                  const blinkActive = blinkState && blinkState.activeUntil && timeMs < blinkState.activeUntil;
+                  if (blinkActive) {
+                      const duration = Math.max(1, blinkState.durationMs || 520);
+                      const startTime = blinkState.startTime || (blinkState.activeUntil - duration);
+                      const elapsed = Math.max(0, timeMs - startTime);
+                      const progress = Math.min(1, elapsed / duration);
+                      const fade = 1 - progress;
+                      const oscillation = 0.5 + 0.5 * Math.sin(progress * Math.PI * 4);
+                      const baseIntensity = Math.min(1.75, Math.max(0, blinkState.intensity || 0));
+                      const intensity = baseIntensity * oscillation * fade;
+                      const overlayAlpha = Math.min(0.4, 0.12 + 0.28 * intensity);
+                      if (overlayAlpha > 0.005) {
+                          this.ctx.save();
+                          this.ctx.fillStyle = `rgba(120, 0, 0, ${overlayAlpha.toFixed(3)})`;
+                          this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                          this.ctx.restore();
+                      }
+                      const lineAlpha = Math.min(0.85, 0.35 + 0.45 * intensity);
+                      const lineWidth = 1 + 1.5 * intensity;
+                      if (lineAlpha > 0.01) {
+                          this.ctx.save();
+                          this.ctx.lineWidth = lineWidth;
+                          this.ctx.strokeStyle = `rgba(255, 60, 60, ${lineAlpha.toFixed(3)})`;
+                          this.ctx.globalCompositeOperation = 'lighter';
+                          for (let x = -gridSize; x <= this.canvas.width + gridSize; x += gridSize) {
+                              this.ctx.beginPath();
+                              this.ctx.moveTo(x, 0);
+                              this.ctx.lineTo(x, this.canvas.height);
+                              this.ctx.stroke();
+                          }
+                          for (let y = -gridSize; y <= this.canvas.height + gridSize; y += gridSize) {
+                              this.ctx.beginPath();
+                              this.ctx.moveTo(0, y);
+                              this.ctx.lineTo(this.canvas.width, y);
+                              this.ctx.stroke();
+                          }
+                          this.ctx.restore();
+                      }
+                  }
 
                 // During boss alert (warning before spawn), overlay red blinking grid lines for visibility
                 const alertPhase = this.inBossPhase && !this.activeBoss;
@@ -4831,16 +4902,21 @@
                 } catch (e) {}
             }
 
-            reset() {
-                this.input.clear();
-                this.player = new Player(this.canvas);
-                // Apply selected theme to new player instance
-                this.player.theme = this.playerTheme || 'default';
-                this.bullets = [];
-                this.rockets = [];
-                this.mines = [];
-                this.enemyBullets = [];
-                this.enemies = [];
+              reset() {
+                  this.input.clear();
+                  this.player = new Player(this.canvas);
+                  // Apply selected theme to new player instance
+                  this.player.theme = this.playerTheme || 'default';
+                  if (this.gridBlink) {
+                      this.gridBlink.startTime = 0;
+                      this.gridBlink.activeUntil = 0;
+                      this.gridBlink.intensity = 0;
+                  }
+                  this.bullets = [];
+                  this.rockets = [];
+                  this.mines = [];
+                  this.enemyBullets = [];
+                  this.enemies = [];
                 this.effects = new EffectsManager();
                 this.score = 0;
                 this.enemiesKilled = 0;
@@ -5232,8 +5308,13 @@
                 if (this.gameOver || this.paused) return;
                 if (this.upgradePause) return;
                 
-                const now = Date.now();
-                const gameTime = now - this.startTime;
+                  const now = Date.now();
+                  const gameTime = now - this.startTime;
+                  if (this.gridBlink && this.gridBlink.activeUntil && now >= this.gridBlink.activeUntil) {
+                      this.gridBlink.activeUntil = 0;
+                      this.gridBlink.intensity = 0;
+                      this.gridBlink.startTime = 0;
+                  }
                 if (!this.controlsInfoAutoHideTriggered && gameTime >= this.controlsInfoAutoHideDelay) {
                     if (this.uiManager && this.uiManager.hideControlsInfo) {
                         this.uiManager.hideControlsInfo();
