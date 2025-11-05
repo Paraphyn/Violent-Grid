@@ -5590,6 +5590,59 @@
                             continue outerRocket;
                         }
                     }
+                      if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                          const segments = Array.isArray(this.activeBoss.segments) ? this.activeBoss.segments : [];
+                          for (let si = segments.length - 1; si >= 0; si--) {
+                              const seg = segments[si];
+                              if (!seg) continue;
+                              const dx = r.x - seg.x;
+                              const dy = r.y - seg.y;
+                              const rr = (r.radius || 0) + (seg.radius || 0);
+                              if (dx * dx + dy * dy <= rr * rr) {
+                                  const exploded = this.rockets.splice(ri, 1)[0];
+                                  if (exploded && this.effects && this.effects.createRocketExplosionRing) {
+                                      this.effects.createRocketExplosionRing(exploded.x, exploded.y, exploded.aoeRadius);
+                                      this.audio.playSound('RocketExplotion');
+                                      if (this.shakeCanvas) this.shakeCanvas(7, 260);
+                                  }
+                                  const ex = exploded ? exploded.x : r.x;
+                                  const ey = exploded ? exploded.y : r.y;
+                                  const aoe = exploded ? exploded.aoeRadius : r.aoeRadius;
+                                  const minX = ex - aoe, maxX = ex + aoe;
+                                  const minY = ey - aoe, maxY = ey + aoe;
+                                  for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
+                                      const en = this.enemies[ej];
+                                      if (!en) continue;
+                                      if (en.x < minX || en.x > maxX || en.y < minY || en.y > maxY) continue;
+                                      const ddx = en.x - ex;
+                                      const ddy = en.y - ey;
+                                      if (ddx * ddx + ddy * ddy <= aoe * aoe) {
+                                          if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
+                                          if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio)) {
+                                              this.effects.createExplosion(en.x, en.y, en.type, en.radius);
+                                              { const config = ENEMY_TYPES[en.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(en.x, en.y, Math.max(8, en.radius * 0.25), xp); }
+                                              if (en.type === 'rhombus') {
+                                                  this.spawnTrianglesAround(en.x, en.y);
+                                              }
+                                              const last = this.enemies.length - 1;
+                                              this.enemies[ej] = this.enemies[last];
+                                              this.enemies.pop();
+                                              if (this.inBossPhase && en.type && (ENEMY_TYPES[en.type]?.isBoss || ENEMY_TYPES[en.type]?.role === 'boss')) {
+                                                  this.onBossDefeated();
+                                              }
+                                              this.score += en.points;
+                                              this.enemiesKilled++;
+                                              this.uiManager.showScoreAddition(en.points);
+                                          }
+                                      }
+                                  }
+                                  if (this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                      this.activeBoss.handleAoeDamage(ex, ey, aoe, exploded.damage, this.effects, this.audio);
+                                  }
+                                  continue outerRocket;
+                              }
+                          }
+                      }
                 }
 
                 // Check mine direct collision: if mine overlaps any enemy, explode immediately
@@ -5644,6 +5697,59 @@
                             continue outerMine;
                         }
                     }
+                      if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                          const segments = Array.isArray(this.activeBoss.segments) ? this.activeBoss.segments : [];
+                          for (let si = segments.length - 1; si >= 0; si--) {
+                              const seg = segments[si];
+                              if (!seg) continue;
+                              const dx = m.x - seg.x;
+                              const dy = m.y - seg.y;
+                              const rr = (m.radius || 0) + (seg.radius || 0);
+                              if (dx * dx + dy * dy <= rr * rr) {
+                                  const exploded = this.mines.splice(mi, 1)[0];
+                                  if (exploded && this.effects && this.effects.createRocketExplosionRing) {
+                                      this.effects.createRocketExplosionRing(exploded.x, exploded.y, exploded.aoeRadius);
+                                      this.audio.playSound('RocketExplotion');
+                                      if (this.shakeCanvas) this.shakeCanvas(7, 260);
+                                  }
+                                  const ex = exploded ? exploded.x : m.x;
+                                  const ey = exploded ? exploded.y : m.y;
+                                  const aoe = exploded ? exploded.aoeRadius : m.aoeRadius;
+                                  const minX = ex - aoe, maxX = ex + aoe;
+                                  const minY = ey - aoe, maxY = ey + aoe;
+                                  for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
+                                      const en = this.enemies[ej];
+                                      if (!en) continue;
+                                      if (en.x < minX || en.x > maxX || en.y < minY || en.y > maxY) continue;
+                                      const ddx = en.x - ex;
+                                      const ddy = en.y - ey;
+                                      if (ddx * ddx + ddy * ddy <= aoe * aoe) {
+                                          if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
+                                          if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio)) {
+                                              this.effects.createExplosion(en.x, en.y, en.type, en.radius);
+                                              { const config = ENEMY_TYPES[en.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(en.x, en.y, Math.max(8, en.radius * 0.25), xp); }
+                                              if (en.type === 'rhombus') {
+                                                  this.spawnTrianglesAround(en.x, en.y);
+                                              }
+                                              const last = this.enemies.length - 1;
+                                              this.enemies[ej] = this.enemies[last];
+                                              this.enemies.pop();
+                                              if (this.inBossPhase && en.type && (ENEMY_TYPES[en.type]?.isBoss || ENEMY_TYPES[en.type]?.role === 'boss')) {
+                                                  this.onBossDefeated();
+                                              }
+                                              this.score += en.points;
+                                              this.enemiesKilled++;
+                                              this.uiManager.showScoreAddition(en.points);
+                                          }
+                                      }
+                                  }
+                                  if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                      this.activeBoss.handleAoeDamage(ex, ey, aoe, exploded.damage, this.effects, this.audio);
+                                  }
+                                  continue outerMine;
+                              }
+                          }
+                      }
                 }
 
                 // Build spatial hash for enemies this frame (kept for other broad-phase uses)
