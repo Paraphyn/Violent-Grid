@@ -1540,6 +1540,20 @@
             }
         };
 
+        ENEMY_TYPES['vector_snake_boss'] = {
+            role: 'boss',
+            health: 3000, // Head health; custom boss logic handles per-segment health
+            speed: 0,
+            size: 60,
+            points: 1200,
+            damage: 100,
+            xp: 0,
+            fillColor: '#33ffdd',
+            strokeColor: '#33ffdd',
+            isBoss: true,
+            bossBaseType: 'vector_snake'
+        };
+
         // Boss: Tetris Cross (cross made of squares)
         // Declared as a boss type so it appears in the boss pool, but it has a custom class/behavior below
         ENEMY_TYPES['tetris_cross_boss'] = {
@@ -1556,10 +1570,37 @@
             bossBaseType: 'tetris_cross'
         };
 
+        // Vector Snake boss config
+        const VECTOR_SNAKE_SETTINGS = Object.freeze({
+            headHp: 3000,
+            segmentHp: 500,
+            headRadius: 26,
+            segmentRadius: 20,
+            segmentSpacing: 34,
+            movementSpeed: 3.6,
+            gridSize: 48,
+            turnIntervalMs: 1600,
+            turnIntervalVarianceMs: 600,
+            margin: 90,
+            headCollisionDamage: 100,
+            segmentCollisionDamage: 25,
+            appleRadius: 20,
+            appleHp: 1000,
+            appleLifetimeMs: 12000,
+            appleSpawnIntervalMs: 7000,
+            appleSpawnIntervalVarianceMs: 2000,
+            growthPerApple: 2,
+            maxApples: 2
+        });
+
+        const BOSS_SELECTION = Object.freeze({
+            firstBossKey: 'vector_snake_boss'
+        });
+
         // Tetris Cross boss config
         const TETRIS_SETTINGS = {
             // Toggle: force Tetris Cross as the first boss with 100% spawn chance
-            forceFirstBoss: true,
+            forceFirstBoss: false,
             // Playfield
             cols: 36,
             cellSize: null, // computed from canvas width
@@ -3093,6 +3134,601 @@
             }
         }
 
+        // ---- Vector Snake Boss ----
+        class VectorSnakeBoss {
+            constructor(game) {
+                this.game = game;
+                this.settings = VECTOR_SNAKE_SETTINGS;
+                this.segments = [];
+                this.pathPoints = [];
+                this.apples = [];
+                this.direction = { dx: 1, dy: 0 };
+                this.alive = true;
+                this.nextTurnTime = Date.now() + this._nextTurnDelay();
+                this.nextAppleTime = Date.now() + this._nextAppleDelay();
+                this.appleIdSeq = 1;
+                this.headRecentDamage = 0;
+                this.headRecentDamageFade = 0;
+                this._beamHitSet = new WeakSet();
+                this._initSnake();
+            }
+
+            _initSnake() {
+                const settings = this.settings;
+                const canvas = this.game.canvas;
+                const safeY = this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : 140;
+                const margin = Math.max(settings.margin, safeY);
+                const grid = settings.gridSize || 48;
+                const headX = Math.round((canvas.width / 2) / grid) * grid;
+                const headY = Math.round(margin / grid) * grid;
+                const head = {
+                    type: 'head',
+                    x: headX,
+                    y: headY,
+                    radius: settings.headRadius,
+                    hp: settings.headHp,
+                    maxHp: settings.headHp,
+                    damageFlash: 0
+                };
+                this.segments.push(head);
+                const initialTail = 6;
+                for (let i = 1; i <= initialTail; i++) {
+                    this.segments.push({
+                        type: 'body',
+                        x: headX - i * settings.segmentSpacing,
+                        y: headY,
+                        radius: settings.segmentRadius,
+                        hp: settings.segmentHp,
+                        maxHp: settings.segmentHp,
+                        damageFlash: 0
+                    });
+                }
+                // Seed path history from initial segment layout (head -> tail order)
+                for (let i = 0; i < this.segments.length; i++) {
+                    const seg = this.segments[i];
+                    this.pathPoints.push({ x: seg.x, y: seg.y });
+                }
+            }
+
+            _nextTurnDelay() {
+                const base = this.settings.turnIntervalMs || 1500;
+                const variance = this.settings.turnIntervalVarianceMs || 0;
+                const offset = (Math.random() * 2 - 1) * variance;
+                return Math.max(700, base + offset);
+            }
+
+            _nextAppleDelay() {
+                const base = this.settings.appleSpawnIntervalMs || 8000;
+                const variance = this.settings.appleSpawnIntervalVarianceMs || 0;
+                const offset = (Math.random() * 2 - 1) * variance;
+                return Math.max(3000, base + offset);
+            }
+
+            update() {
+                if (!this.alive) return false;
+                const now = Date.now();
+                if (now >= this.nextTurnTime) {
+                    this._chooseDirection(false);
+                }
+
+                const motion = getMotionScale();
+                const timeScale = getTimeScale();
+                const head = this.segments[0];
+                if (!head) return false;
+                const speed = (this.settings.movementSpeed || 3.5) * motion * timeScale;
+                this._moveHead(speed);
+                this.pathPoints.unshift({ x: head.x, y: head.y });
+                if (this.pathPoints.length > 1) this._trimPath();
+                this._updateSegmentsFromPath();
+                this._updateDamageFlash();
+
+                const settings = this.settings;
+                if (this.apples.length < settings.maxApples) {
+                    if (now >= this.nextAppleTime) {
+                        this._spawnAppleNearPlayer();
+                        this.nextAppleTime = now + this._nextAppleDelay();
+                    }
+                }
+                this._updateApples(now);
+                this._checkAppleConsumption();
+                return true;
+            }
+
+            _chooseDirection(forceTurn) {
+                const head = this.segments[0];
+                if (!head) return;
+                const options = [
+                    { dx: 1, dy: 0 },
+                    { dx: -1, dy: 0 },
+                    { dx: 0, dy: 1 },
+                    { dx: 0, dy: -1 }
+                ];
+                const viable = options.filter(dir => {
+                    if (!forceTurn && this._isOpposite(dir, this.direction)) return false;
+                    return this._directionKeepsInBounds(head, dir);
+                });
+                const pool = viable.length > 0 ? viable : options.filter(dir => !this._isOpposite(dir, this.direction));
+                const chosen = pool[Math.floor(Math.random() * pool.length)] || this.direction;
+                if (chosen.dx !== this.direction.dx || chosen.dy !== this.direction.dy) {
+                    this.direction = chosen;
+                    this._alignHeadToGrid();
+                }
+                this.nextTurnTime = Date.now() + this._nextTurnDelay();
+            }
+
+            _directionKeepsInBounds(head, dir) {
+                const canvas = this.game.canvas;
+                const settings = this.settings;
+                const margin = settings.margin || 90;
+                const safeTop = Math.max(margin, this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : margin);
+                const lookahead = (settings.gridSize || 48) * 2;
+                const futureX = head.x + dir.dx * lookahead;
+                const futureY = head.y + dir.dy * lookahead;
+                if (futureX < margin || futureX > canvas.width - margin) return false;
+                if (futureY < safeTop || futureY > canvas.height - margin) return false;
+                return true;
+            }
+
+            _isOpposite(a, b) {
+                if (!a || !b) return false;
+                return a.dx === -b.dx && a.dy === -b.dy;
+            }
+
+            _alignHeadToGrid() {
+                const head = this.segments[0];
+                if (!head) return;
+                const settings = this.settings;
+                const grid = settings.gridSize || 48;
+                const canvas = this.game.canvas;
+                const margin = settings.margin || 90;
+                const safeTop = Math.max(margin, this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : margin);
+                if (this.direction.dx !== 0) {
+                    head.y = Math.round(head.y / grid) * grid;
+                } else if (this.direction.dy !== 0) {
+                    head.x = Math.round(head.x / grid) * grid;
+                }
+                head.x = Math.max(margin, Math.min(canvas.width - margin, head.x));
+                head.y = Math.max(safeTop, Math.min(canvas.height - margin, head.y));
+            }
+
+            _moveHead(step) {
+                const head = this.segments[0];
+                if (!head) return;
+                const settings = this.settings;
+                const canvas = this.game.canvas;
+                const margin = settings.margin || 90;
+                const safeTop = Math.max(margin, this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : margin);
+                let nextX = head.x + this.direction.dx * step;
+                let nextY = head.y + this.direction.dy * step;
+                if (nextX < margin || nextX > canvas.width - margin || nextY < safeTop || nextY > canvas.height - margin) {
+                    this._chooseDirection(true);
+                    nextX = head.x + this.direction.dx * step;
+                    nextY = head.y + this.direction.dy * step;
+                }
+                head.x = Math.max(margin, Math.min(canvas.width - margin, nextX));
+                head.y = Math.max(safeTop, Math.min(canvas.height - margin, nextY));
+            }
+
+            _trimPath() {
+                const maxDistance = (this.settings.segmentSpacing || 32) * (this.segments.length + 4);
+                let accumulated = 0;
+                for (let i = 0; i < this.pathPoints.length - 1; i++) {
+                    const p0 = this.pathPoints[i];
+                    const p1 = this.pathPoints[i + 1];
+                    accumulated += Math.hypot(p1.x - p0.x, p1.y - p0.y);
+                    if (accumulated >= maxDistance) {
+                        this.pathPoints.length = i + 2;
+                        return;
+                    }
+                }
+            }
+
+            _samplePath(distance) {
+                if (this.pathPoints.length === 0) return null;
+                let accumulated = 0;
+                for (let i = 0; i < this.pathPoints.length - 1; i++) {
+                    const p0 = this.pathPoints[i];
+                    const p1 = this.pathPoints[i + 1];
+                    const segDist = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+                    if (segDist <= 0) continue;
+                    if (accumulated + segDist >= distance) {
+                        const ratio = (distance - accumulated) / segDist;
+                        return {
+                            x: p0.x + (p1.x - p0.x) * ratio,
+                            y: p0.y + (p1.y - p0.y) * ratio
+                        };
+                    }
+                    accumulated += segDist;
+                }
+                return this.pathPoints[this.pathPoints.length - 1];
+            }
+
+            _updateSegmentsFromPath() {
+                const spacing = this.settings.segmentSpacing || 32;
+                for (let i = 1; i < this.segments.length; i++) {
+                    const target = this._samplePath(i * spacing);
+                    if (target) {
+                        this.segments[i].x = target.x;
+                        this.segments[i].y = target.y;
+                    }
+                }
+            }
+
+            _updateDamageFlash() {
+                const t = getTimeScale();
+                for (let i = 0; i < this.segments.length; i++) {
+                    const seg = this.segments[i];
+                    if (seg.damageFlash > 0) {
+                        seg.damageFlash = Math.max(0, seg.damageFlash - t);
+                    }
+                }
+                for (let i = 0; i < this.apples.length; i++) {
+                    const apple = this.apples[i];
+                    if (apple.damageFlash > 0) apple.damageFlash = Math.max(0, apple.damageFlash - t);
+                }
+            }
+
+            _spawnAppleNearPlayer() {
+                const player = this.game.player;
+                const canvas = this.game.canvas;
+                if (!player) return;
+                const settings = this.settings;
+                const margin = settings.margin || 90;
+                const safeTop = Math.max(margin, this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : margin);
+                const distance = 140 + Math.random() * 160;
+                const angle = Math.random() * Math.PI * 2;
+                let x = player.x + Math.cos(angle) * distance;
+                let y = player.y + Math.sin(angle) * distance;
+                x = Math.max(margin, Math.min(canvas.width - margin, x));
+                y = Math.max(safeTop, Math.min(canvas.height - margin, y));
+                const apple = {
+                    id: this.appleIdSeq++,
+                    x,
+                    y,
+                    radius: settings.appleRadius,
+                    hp: settings.appleHp,
+                    maxHp: settings.appleHp,
+                    damageFlash: 0,
+                    spawnTime: Date.now(),
+                    pulse: Math.random() * Math.PI * 2
+                };
+                this.apples.push(apple);
+                if (this.game.effects) {
+                    this.game.effects.createBulletExplosion(x, y, '#ff3366');
+                }
+            }
+
+            _updateApples(now) {
+                const lifeMs = this.settings.appleLifetimeMs || 12000;
+                const timeScale = getTimeScale();
+                for (let i = this.apples.length - 1; i >= 0; i--) {
+                    const apple = this.apples[i];
+                    apple.pulse = (apple.pulse + 0.12 * timeScale) % (Math.PI * 2);
+                    if (now - apple.spawnTime >= lifeMs) {
+                        this.apples.splice(i, 1);
+                    }
+                }
+            }
+
+            _checkAppleConsumption() {
+                for (let ai = this.apples.length - 1; ai >= 0; ai--) {
+                    const apple = this.apples[ai];
+                    let consumed = false;
+                    for (let si = 0; si < this.segments.length; si++) {
+                        const seg = this.segments[si];
+                        const dx = seg.x - apple.x;
+                        const dy = seg.y - apple.y;
+                        const limit = seg.radius + apple.radius;
+                        if (dx * dx + dy * dy <= limit * limit) {
+                            consumed = true;
+                            break;
+                        }
+                    }
+                    if (consumed) {
+                        this._consumeApple(ai, false);
+                        this.nextAppleTime = Date.now() + this._nextAppleDelay();
+                    }
+                }
+            }
+
+            _consumeApple(index, deniedByPlayer) {
+                const apple = this.apples[index];
+                if (!apple) return;
+                this.apples.splice(index, 1);
+                if (deniedByPlayer) {
+                    if (this.game.effects) {
+                        this.game.effects.createExplosion(apple.x, apple.y, 'square', apple.radius * 1.2);
+                    }
+                    return;
+                }
+                this._grow(this.settings.growthPerApple || 2);
+                if (this.game.effects) {
+                    this.game.effects.createExplosion(apple.x, apple.y, 'square', apple.radius * 1.5);
+                }
+                if (this.game.audio) {
+                    this.game.audio.playSound('boss_hit');
+                }
+            }
+
+            _grow(count) {
+                if (!count || count <= 0) return;
+                const tail = this.segments[this.segments.length - 1] || this.segments[0];
+                const settings = this.settings;
+                for (let i = 0; i < count; i++) {
+                    const seg = {
+                        type: 'body',
+                        x: tail ? tail.x : 0,
+                        y: tail ? tail.y : 0,
+                        radius: settings.segmentRadius,
+                        hp: settings.segmentHp,
+                        maxHp: settings.segmentHp,
+                        damageFlash: 0
+                    };
+                    this.segments.push(seg);
+                    if (tail) {
+                        this.pathPoints.push({ x: tail.x, y: tail.y });
+                    }
+                }
+            }
+
+            handlePlayerBullet(bullet, effects, audio) {
+                if (!this.alive) return false;
+                const radius = bullet.radius || 6;
+                for (let i = 0; i < this.segments.length; i++) {
+                    const seg = this.segments[i];
+                    const dx = bullet.x - seg.x;
+                    const dy = bullet.y - seg.y;
+                    const limit = radius + seg.radius;
+                    if (dx * dx + dy * dy <= limit * limit) {
+                        this._applyDamageToSegment(seg, bullet.damage || 0, effects, audio);
+                        return true;
+                    }
+                }
+                for (let i = 0; i < this.apples.length; i++) {
+                    const apple = this.apples[i];
+                    const dx = bullet.x - apple.x;
+                    const dy = bullet.y - apple.y;
+                    const limit = radius + apple.radius;
+                    if (dx * dx + dy * dy <= limit * limit) {
+                        this._applyDamageToApple(i, bullet.damage || 0, effects, audio);
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            handleRailgunBeam(effect, effects, audio) {
+                if (!this.alive) return false;
+                if (!effect) return false;
+                if (this._beamHitSet && this._beamHitSet.has(effect)) return false;
+                let hit = false;
+                if (typeof effect.intersectsCircle === 'function') {
+                    for (let i = 0; i < this.segments.length; i++) {
+                        const seg = this.segments[i];
+                        if (effect.intersectsCircle(seg.x, seg.y, seg.radius, seg)) {
+                            hit = true;
+                            this._applyDamageToSegment(seg, effect.damage || 0, effects, audio);
+                            if (!this.alive) return true;
+                        }
+                    }
+                    for (let i = this.apples.length - 1; i >= 0; i--) {
+                        const apple = this.apples[i];
+                        if (effect.intersectsCircle(apple.x, apple.y, apple.radius, apple)) {
+                            hit = true;
+                            this._applyDamageToApple(i, effect.damage || 0, effects, audio);
+                        }
+                    }
+                }
+                if (hit && this._beamHitSet) {
+                    this._beamHitSet.add(effect);
+                }
+                return hit;
+            }
+
+            handleAoeDamage(x, y, radius, damage, effects, audio) {
+                if (!this.alive) return;
+                const limitSq = radius * radius;
+                for (let i = this.segments.length - 1; i >= 0; i--) {
+                    const seg = this.segments[i];
+                    const dx = seg.x - x;
+                    const dy = seg.y - y;
+                    if (dx * dx + dy * dy <= limitSq) {
+                        this._applyDamageToSegment(seg, damage, effects, audio);
+                        if (!this.alive) break;
+                    }
+                }
+                for (let i = this.apples.length - 1; i >= 0; i--) {
+                    const apple = this.apples[i];
+                    const dx = apple.x - x;
+                    const dy = apple.y - y;
+                    if (dx * dx + dy * dy <= limitSq) {
+                        this._applyDamageToApple(i, damage, effects, audio);
+                    }
+                }
+            }
+
+            _applyDamageToSegment(segment, damage, effects, audio) {
+                if (!segment || damage <= 0) return;
+                segment.hp = Math.max(0, segment.hp - damage);
+                segment.damageFlash = 12;
+                if (effects) {
+                    effects.createHitEffect(segment.x, segment.y);
+                    effects.createDamageLabel(segment.x, segment.y - segment.radius - 18, damage, false);
+                }
+                if (segment.type === 'head') {
+                    this.headRecentDamage = damage;
+                    this.headRecentDamageFade = 45;
+                    if (audio) audio.playSound('boss_hit');
+                    if (segment.hp <= 0) {
+                        this._onHeadKilled();
+                    }
+                } else {
+                    if (audio) audio.playSound('enemyHit');
+                    if (segment.hp <= 0) {
+                        this._removeSegment(segment, effects);
+                    }
+                }
+            }
+
+            _applyDamageToApple(index, damage, effects, audio) {
+                const apple = this.apples[index];
+                if (!apple || damage <= 0) return;
+                apple.hp = Math.max(0, apple.hp - damage);
+                apple.damageFlash = 12;
+                if (effects) {
+                    effects.createHitEffect(apple.x, apple.y);
+                    effects.createDamageLabel(apple.x, apple.y - apple.radius - 16, damage, false);
+                }
+                if (apple.hp <= 0) {
+                    if (audio) audio.playSound('enemyDeath');
+                    this._consumeApple(index, true);
+                    this.nextAppleTime = Date.now() + this._nextAppleDelay();
+                }
+            }
+
+            _removeSegment(segment, effects) {
+                const idx = this.segments.indexOf(segment);
+                if (idx <= 0) return;
+                const removed = this.segments.splice(idx, 1)[0];
+                if (removed && effects) {
+                    effects.createExplosion(removed.x, removed.y, 'square', removed.radius * 1.3);
+                }
+            }
+
+            _onHeadKilled() {
+                if (!this.alive) return;
+                this.alive = false;
+                if (this.game.audio) this.game.audio.playSound('bossDefeated');
+                if (this.game.effects) {
+                    for (let i = 0; i < this.segments.length; i++) {
+                        const seg = this.segments[i];
+                        this.game.effects.createExplosion(seg.x, seg.y, 'square', seg.radius * 1.4);
+                    }
+                    const head = this.segments[0];
+                    if (head) {
+                        this.game.effects.createXPRing(head.x, head.y, 28, 240);
+                    }
+                }
+                if (this.game) {
+                    const config = ENEMY_TYPES['vector_snake_boss'] || {};
+                    if (config.points) {
+                        this.game.score += config.points;
+                        if (this.game.uiManager && this.game.uiManager.showScoreAddition) {
+                            this.game.uiManager.showScoreAddition(config.points);
+                        }
+                    }
+                    this.game.enemiesKilled = (this.game.enemiesKilled || 0) + 1;
+                }
+                this.apples.length = 0;
+            }
+
+            checkPlayerCollision(player, effects, audio) {
+                if (!this.alive || !player || player.invulnerable) return;
+                const head = this.segments[0];
+                if (head) {
+                    const dx = player.x - head.x;
+                    const dy = player.y - head.y;
+                    const limit = player.radius + head.radius;
+                    if (dx * dx + dy * dy <= limit * limit) {
+                        player.takeDamage(this.settings.headCollisionDamage || 100, (player.x + head.x) / 2, (player.y + head.y) / 2, effects, audio);
+                        return;
+                    }
+                }
+                const bodyDamage = this.settings.segmentCollisionDamage || 25;
+                for (let i = 1; i < this.segments.length; i++) {
+                    const seg = this.segments[i];
+                    const dx = player.x - seg.x;
+                    const dy = player.y - seg.y;
+                    const limit = player.radius + seg.radius;
+                    if (dx * dx + dy * dy <= limit * limit) {
+                        player.takeDamage(bodyDamage, (player.x + seg.x) / 2, (player.y + seg.y) / 2, effects, audio);
+                        return;
+                    }
+                }
+            }
+
+            draw(ctx) {
+                if (!ctx) return;
+                this._drawApples(ctx);
+                this._drawSnake(ctx);
+                this._drawHeadHealthBar(ctx);
+            }
+
+            _drawApples(ctx) {
+                for (let i = 0; i < this.apples.length; i++) {
+                    const apple = this.apples[i];
+                    ctx.save();
+                    const pulseScale = 0.9 + 0.1 * Math.sin(apple.pulse);
+                    const color = apple.damageFlash > 0 ? '#ffffff' : '#ff2244';
+                    ctx.shadowBlur = 18;
+                    ctx.shadowColor = '#ff2244';
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.arc(apple.x, apple.y, apple.radius * pulseScale, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = '#ff6688';
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            _drawSnake(ctx) {
+                for (let i = this.segments.length - 1; i >= 0; i--) {
+                    const seg = this.segments[i];
+                    ctx.save();
+                    const isHead = seg.type === 'head';
+                    ctx.shadowBlur = isHead ? 24 : 16;
+                    ctx.shadowColor = isHead ? '#ff2a70' : '#22ffee';
+                    ctx.fillStyle = seg.damageFlash > 0 ? '#ffffff' : (isHead ? '#ff2a70' : '#22ffee');
+                    ctx.strokeStyle = isHead ? '#ff7aa6' : '#66ffef';
+                    ctx.lineWidth = isHead ? 3 : 2;
+                    ctx.beginPath();
+                    ctx.arc(seg.x, seg.y, seg.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    if (isHead) {
+                        ctx.beginPath();
+                        ctx.fillStyle = '#0d0d16';
+                        ctx.arc(seg.x + seg.radius * 0.4, seg.y - seg.radius * 0.2, seg.radius * 0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.beginPath();
+                        ctx.arc(seg.x - seg.radius * 0.4, seg.y - seg.radius * 0.2, seg.radius * 0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                }
+            }
+
+            _drawHeadHealthBar(ctx) {
+                const head = this.segments[0];
+                if (!head) return;
+                const width = 160;
+                const height = 8;
+                const yOffset = head.radius + 34;
+                ctx.save();
+                ctx.fillStyle = 'rgba(40, 0, 40, 0.7)';
+                ctx.fillRect(head.x - width / 2, head.y - yOffset, width, height);
+                const pct = head.maxHp > 0 ? Math.max(0, Math.min(1, head.hp / head.maxHp)) : 0;
+                ctx.fillStyle = '#ff2a70';
+                ctx.fillRect(head.x - width / 2, head.y - yOffset, width * pct, height);
+                if (this.headRecentDamageFade > 0 && head.maxHp > 0) {
+                    this.headRecentDamageFade = Math.max(0, this.headRecentDamageFade - getTimeScale());
+                    const recentPct = Math.min(1, this.headRecentDamage / head.maxHp);
+                    const overlayStart = head.x - width / 2 + width * pct;
+                    const overlayWidth = width * recentPct;
+                    const alpha = Math.max(0, this.headRecentDamageFade / 45);
+                    ctx.fillStyle = `rgba(255, 255, 255, ${0.9 * alpha})`;
+                    ctx.fillRect(overlayStart, head.y - yOffset, overlayWidth, height);
+                }
+                ctx.restore();
+            }
+
+            isDefeated() {
+                return !this.alive;
+            }
+        }
+
         // UI Manager for handling UI visibility
         class UIManager {
             constructor() {
@@ -3420,19 +4056,25 @@
             }
 
             spawnBoss() {
-                // Determine boss type; force Tetris Cross for first boss if enabled
                 let chosen;
-                if (this.defeatedBossCount === 0 && TETRIS_SETTINGS.forceFirstBoss) {
-                    chosen = 'tetris_cross_boss';
+                const firstBossKey = BOSS_SELECTION.firstBossKey || 'vector_snake_boss';
+                if (this.defeatedBossCount === 0) {
+                    chosen = firstBossKey;
                 } else {
                     const bossTypes = this.getAvailableBossTypes();
                     if (!this.usedBossTypes) this.usedBossTypes = new Set();
                     const unused = bossTypes.filter(b => !this.usedBossTypes.has(b));
                     const pool = unused.length > 0 ? unused : bossTypes;
                     if (unused.length === 0) this.usedBossTypes.clear();
-                    chosen = pool[Math.floor(Math.random() * pool.length)] || 'rhombus_boss';
+                    chosen = pool[Math.floor(Math.random() * pool.length)] || firstBossKey;
                 }
                 this.usedBossTypes.add(chosen);
+
+                if (chosen === 'vector_snake_boss') {
+                    this.activeBoss = new VectorSnakeBoss(this);
+                    if (this.uiManager && this.uiManager.hideBossWarning) this.uiManager.hideBossWarning();
+                    return;
+                }
 
                 if (chosen === 'tetris_cross_boss') {
                     // Custom boss instantiation
@@ -4361,6 +5003,8 @@
                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
                     this.activeBoss.update();
                     this.tetrisManager.update();
+                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                    this.activeBoss.update();
                 }
                 
                 // Update background parallax based on player movement
@@ -4400,27 +5044,30 @@
                                         }
                                     }
                                 }
-                            }
-                            // Apply AoE to Tetris Cross boss pieces if active
-                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
-                                for (let p = this.tetrisManager.activePieces.length - 1; p >= 0; p--) {
-                                    const piece = this.tetrisManager.activePieces[p];
-                                    if (!piece || piece.dying) continue;
-                                    const cells = piece.getCells();
-                                    for (let c = 0; c < cells.length; c++) {
-                                        const cell = cells[c];
-                                        const dx = cell.x - r.x; const dy = cell.y - r.y;
-                                        if (dx*dx + dy*dy <= (r.aoeRadius) * (r.aoeRadius)) {
-                                            piece.hp -= r.damage;
-                                            piece.damageFlash = 12;
-                                            if (piece.hp <= 0) {
-                                                piece.startDeath(this.effects);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                              }
+                              if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
+                                  // Apply AoE to Tetris Cross boss pieces
+                                  for (let p = this.tetrisManager.activePieces.length - 1; p >= 0; p--) {
+                                      const piece = this.tetrisManager.activePieces[p];
+                                      if (!piece || piece.dying) continue;
+                                      const cells = piece.getCells();
+                                      for (let c = 0; c < cells.length; c++) {
+                                          const cell = cells[c];
+                                          const dx = cell.x - r.x;
+                                          const dy = cell.y - r.y;
+                                          if (dx*dx + dy*dy <= (r.aoeRadius) * (r.aoeRadius)) {
+                                              piece.hp -= r.damage;
+                                              piece.damageFlash = 12;
+                                              if (piece.hp <= 0) {
+                                                  piece.startDeath(this.effects);
+                                                  break;
+                                              }
+                                          }
+                                      }
+                                  }
+                              } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                  this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
+                              }
                         }
                     }
                     this.rockets.length = write;
@@ -4459,6 +5106,9 @@
                                     }
                                 }
                             }
+                              if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                  this.activeBoss.handleAoeDamage(m.x, m.y, m.aoeRadius, m.damage, this.effects, this.audio);
+                              }
                         }
                     }
                     this.mines.length = write;
@@ -4542,7 +5192,7 @@
                                 }
                             }
                             // AoE onto Tetris Cross boss pieces
-                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
+                              if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
                                 for (let p = this.tetrisManager.activePieces.length - 1; p >= 0; p--) {
                                     const piece = this.tetrisManager.activePieces[p];
                                     if (!piece || piece.dying) continue;
@@ -4557,6 +5207,8 @@
                                         }
                                     }
                                 }
+                              } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                  this.activeBoss.handleAoeDamage(ex, ey, exploded.aoeRadius, exploded.damage, this.effects, this.audio);
                             }
                             continue outerRocket;
                         }
@@ -4609,6 +5261,9 @@
                                     }
                                 }
                             }
+                              if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                  this.activeBoss.handleAoeDamage(ex, ey, exploded.aoeRadius, exploded.damage, this.effects, this.audio);
+                              }
                             continue outerMine;
                         }
                     }
@@ -4714,6 +5369,21 @@
                     }
                 }
 
+                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                    for (let j = this.bullets.length - 1; j >= 0; j--) {
+                        const b = this.bullets[j];
+                        if (!b || b._dead) continue;
+                        if (this.activeBoss.handlePlayerBullet(b, this.effects, this.audio)) {
+                            b._dead = true;
+                        }
+                    }
+                    for (let j = this.effects.effects.length - 1; j >= 0; j--) {
+                        const effect = this.effects.effects[j];
+                        if (effect.type !== 'railgunBeam') continue;
+                        this.activeBoss.handleRailgunBeam(effect, this.effects, this.audio);
+                    }
+                }
+
                 // Bullet collisions with tetromino pieces
                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
                     const cellHash = new SpatialHash(TETRIS_SETTINGS.cellSize || 40);
@@ -4815,6 +5485,10 @@
                     }
                 }
 
+                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss && !this.player.isDashing) {
+                    this.activeBoss.checkPlayerCollision(this.player, this.effects, this.audio);
+                }
+
                 // Railgun interaction with Tetris Cross boss (full charge only)
                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
 					// Player circle collision with Tetris boss should only damage player, not boss
@@ -4866,6 +5540,8 @@
                 
                 // If custom boss died outside of loop, close phase
                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss && !this.activeBoss.active) {
+                    this.onBossDefeated();
+                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss && this.activeBoss.isDefeated()) {
                     this.onBossDefeated();
                 }
 
