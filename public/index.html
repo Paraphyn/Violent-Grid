@@ -1591,6 +1591,8 @@
             { timer: 168000, wave: 12, enemies: { cubes: 0, triangles: 25, octagons: 0, rhombuses: 25 }, spawnTime: 35000 }
         ];
 
+        const INITIAL_ENEMY_SPAWN_DELAY_MS = 3000;
+
         // Option: use grouped wave randomization (set to true to enable)
         const USE_WAVE_GROUPS = true;
 
@@ -3911,6 +3913,7 @@
                 this.enemiesToSpawn = [];
                 this.spawnedEnemies = 0;
                 this.waveSpawnInterval = 0;
+                this.initialSpawnDelayUntil = Date.now() + INITIAL_ENEMY_SPAWN_DELAY_MS;
                 this.gameOver = false;
                 this.paused = false;
                 // Boss state
@@ -4060,8 +4063,12 @@
                                     this.uiManager.showControlsInfo();
                                 }
                             } else {
-                                this.startTime += Date.now() - this.pauseTime;
-                                this.waveStartTime += Date.now() - this.pauseTime;
+                                const pauseDelta = Date.now() - this.pauseTime;
+                                this.startTime += pauseDelta;
+                                this.waveStartTime += pauseDelta;
+                                if (this.initialSpawnDelayUntil) {
+                                    this.initialSpawnDelayUntil += pauseDelta;
+                                }
                                 this.audio.resumeMusic();
                                 this.audio.playSound('pauseDeactivate');
                                 quitButton.classList.remove('visible');
@@ -4251,6 +4258,9 @@
                     this.currentWave = waveConfig.wave;
                 }
                 this.waveStarted = true;
+                if (this.initialSpawnDelayUntil) {
+                    this.initialSpawnDelayUntil = null;
+                }
                 this.waveStartTime = Date.now();
                 this.spawnedEnemies = 0;
                 this.enemiesToSpawn = [];
@@ -4284,7 +4294,8 @@
                 if (this.gameOver || this.paused) return;
                 if (this.upgradePause) return;
                 
-                const gameTime = Date.now() - this.startTime;
+                const now = Date.now();
+                const gameTime = now - this.startTime;
                 if (!this.controlsInfoAutoHideTriggered && gameTime >= this.controlsInfoAutoHideDelay) {
                     if (this.uiManager && this.uiManager.hideControlsInfo) {
                         this.uiManager.hideControlsInfo();
@@ -4294,21 +4305,22 @@
                 
                 // Boss phase timing: after warning ends, spawn boss
                 if (this.inBossPhase) {
-                    if (!this.activeBoss && Date.now() >= this.bossWarningEndTime) {
+                    if (!this.activeBoss && now >= this.bossWarningEndTime) {
                         this.spawnBoss();
                     }
                 }
                 
                 // Handle wave pause - only affects wave spawning, not gameplay
                 if (this.inWavePause) {
-                    if (Date.now() >= this.wavePauseEndTime) {
+                    if (now >= this.wavePauseEndTime) {
                         this.inWavePause = false;
                     }
                     // Continue with all normal gameplay during wave pause
                 }
                 
                 // Only check for next wave if not in wave pause or boss phase
-                if (!this.inWavePause && !this.inBossPhase) {
+                const initialDelayPending = this.initialSpawnDelayUntil && now < this.initialSpawnDelayUntil;
+                if (!initialDelayPending && !this.inWavePause && !this.inBossPhase) {
                     if (USE_WAVE_GROUPS) {
                         if (!this.waveStarted) {
                             const nextGrouped = this.getNextGroupedWave();
@@ -4324,7 +4336,7 @@
                     }
                 }
                 if (this.waveStarted && !this.inBossPhase && this.enemiesToSpawn.length > 0) {
-                    const waveElapsed = this.waveStartTime ? (Date.now() - this.waveStartTime) : 0;
+                    const waveElapsed = this.waveStartTime ? (now - this.waveStartTime) : 0;
                     while (this.spawnedEnemies < this.enemiesToSpawn.length) {
                         const nextSpawnOffset = this.waveSpawnInterval * this.spawnedEnemies;
                         if (waveElapsed + 1e-6 < nextSpawnOffset) break;
@@ -5254,8 +5266,12 @@
             resumeAfterUpgrade() {
                 this.upgradePause = false;
                 this.paused = false;
-                this.startTime += Date.now() - this.pauseTime;
-                this.waveStartTime += Date.now() - this.pauseTime;
+                const pauseDelta = Date.now() - this.pauseTime;
+                this.startTime += pauseDelta;
+                this.waveStartTime += pauseDelta;
+                if (this.initialSpawnDelayUntil) {
+                    this.initialSpawnDelayUntil += pauseDelta;
+                }
                 this.audio.resumeMusic();
             }
 
