@@ -1595,6 +1595,7 @@
             appleSpawnReductionIntervalMs: 7000,
             appleSpawnReductionPercent: 0.03,
             appleMinSpawnIntervalMs: 2500,
+            appleSpawnRampDurationMs: 90000,
             growthPerApple: 2,
             maxApples: 2,
             speedIncreaseIntervalMs: 5000,
@@ -3196,15 +3197,16 @@
                 this.apples = [];
                 this.direction = { dx: 1, dy: 0 };
                 this.alive = true;
-                this.nextTurnTime = Date.now() + this._nextTurnDelay();
-                this.nextAppleTime = Date.now() + this._nextAppleDelay();
+                const now = Date.now();
+                this.spawnTimestamp = now;
+                this.nextTurnTime = now + this._nextTurnDelay();
                 this.appleIdSeq = 1;
                 this.headRecentDamage = 0;
                 this.headRecentDamageFade = 0;
                 this._beamHitSet = new WeakSet();
-                this.spawnTimestamp = Date.now();
                 this.speedMultiplier = 1;
                 this.targetAppleId = null;
+                this.appleSpawnController = this._createAppleSpawnController(now);
                 this._initSnake();
             }
 
@@ -3258,25 +3260,68 @@
                 return Math.max(700, base + offset);
             }
 
-            _nextAppleDelay() {
+            _createAppleSpawnController(now) {
                 const settings = this.settings;
-                const base = settings.appleSpawnIntervalMs || 8000;
-                const variance = settings.appleSpawnIntervalVarianceMs || 0;
-                const now = Date.now();
+                const baseInterval = Math.max(400, settings.appleSpawnIntervalMs || 7000);
+                const minSetting = settings.appleMinSpawnIntervalMs || baseInterval;
+                const minInterval = Math.max(200, Math.min(baseInterval, minSetting));
+                const rampDuration = Math.max(0, settings.appleSpawnRampDurationMs || 90000);
+                return {
+                    baseIntervalMs: baseInterval,
+                    minIntervalMs: minInterval,
+                    rampDurationMs: rampDuration,
+                    currentIntervalMs: baseInterval,
+                    accumulatorMs: 0,
+                    lastTimestamp: now,
+                    lastSpawnTimestamp: now
+                };
+            }
+
+            _computeAppleSpawnTargetInterval(now) {
+                const controller = this.appleSpawnController;
+                if (!controller) return this.settings.appleSpawnIntervalMs || 7000;
+                const base = controller.baseIntervalMs;
+                const min = controller.minIntervalMs;
+                if (base <= min) return min;
+                const ramp = controller.rampDurationMs;
+                if (!ramp || ramp <= 0) return base;
                 const elapsed = Math.max(0, now - this.spawnTimestamp);
-                const reductionInterval = settings.appleSpawnReductionIntervalMs || 7000;
-                const reductionPercent = settings.appleSpawnReductionPercent || 0;
-                let scale = 1;
-                if (reductionInterval > 0 && reductionPercent > 0) {
-                    const steps = Math.floor(elapsed / reductionInterval);
-                    const clampPercent = Math.max(0, Math.min(0.95, reductionPercent));
-                    scale = Math.pow(1 - clampPercent, steps);
+                if (elapsed >= ramp) return min;
+                const progress = elapsed / ramp;
+                const eased = 1 - Math.pow(1 - progress, 2);
+                const target = base - (base - min) * eased;
+                return Math.max(min, Math.min(base, target));
+            }
+
+            _updateAppleSpawning(now, timeScale) {
+                const controller = this.appleSpawnController;
+                if (!controller) return;
+
+                const delta = Math.max(0, now - (controller.lastTimestamp || now));
+                controller.lastTimestamp = now;
+
+                const targetInterval = this._computeAppleSpawnTargetInterval(now);
+                controller.currentIntervalMs = Math.max(controller.minIntervalMs, Math.min(controller.baseIntervalMs, targetInterval));
+                const interval = controller.currentIntervalMs;
+
+                const scale = typeof timeScale === 'number' && Number.isFinite(timeScale) ? Math.max(0, timeScale) : 1;
+                const increment = delta * scale;
+                if (Number.isFinite(increment) && increment > 0) {
+                    controller.accumulatorMs = Math.max(0, controller.accumulatorMs + increment);
                 }
-                const scaledBase = base * scale;
-                const scaledVariance = variance * scale;
-                const offset = (Math.random() * 2 - 1) * scaledVariance;
-                const minInterval = settings.appleMinSpawnIntervalMs || 2000;
-                return Math.max(minInterval, scaledBase + offset);
+                controller.accumulatorMs = Math.min(controller.accumulatorMs, interval * 2);
+
+                if (this.apples.length >= this.settings.maxApples) {
+                    controller.accumulatorMs = Math.min(controller.accumulatorMs, interval);
+                    return;
+                }
+
+                if (controller.accumulatorMs >= interval) {
+                    this._spawnAppleNearPlayer();
+                    controller.accumulatorMs = 0;
+                    controller.lastSpawnTimestamp = now;
+                    controller.currentIntervalMs = Math.max(controller.minIntervalMs, Math.min(controller.baseIntervalMs, this._computeAppleSpawnTargetInterval(now)));
+                }
             }
 
             update() {
@@ -3304,11 +3349,7 @@
                 this._updateSegmentsFromPath();
                 this._updateDamageFlash();
 
-                const settings = this.settings;
-                if (this.apples.length < settings.maxApples && now >= this.nextAppleTime) {
-                    this._spawnAppleNearPlayer();
-                    this.nextAppleTime = now + this._nextAppleDelay();
-                }
+                this._updateAppleSpawning(now, timeScale);
                 this._updateApples(now);
                 this._checkAppleConsumption();
                 return true;
@@ -3577,139 +3618,138 @@
                 }
             }
 
-              _spawnAppleNearPlayer() {
-                  const player = this.game.player;
-                  const canvas = this.game.canvas;
-                  if (!player || !canvas) return;
-                  const settings = this.settings;
-                  const margin = settings.margin || 90;
-                  const safeTop = Math.max(margin, this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : margin);
-                  const minDistance = settings.appleSpawnNearPlayerMinDistance || 80;
-                  const maxDistanceSetting = settings.appleSpawnNearPlayerMaxDistance || (minDistance + 160);
-                  const maxDistance = Math.max(minDistance + 20, maxDistanceSetting);
-                  const appleRadius = settings.appleRadius || 20;
-                  const segmentRadius = settings.segmentRadius || (settings.segmentSize || 40) / 2;
-                  const baseSnakePadding = segmentRadius + appleRadius + 12;
-                  const avoidApplePadding = appleRadius * 2 + 16;
-                  const desiredDistance = (minDistance + maxDistance) * 0.5;
+            _spawnAppleNearPlayer() {
+                const player = this.game.player;
+                const canvas = this.game.canvas;
+                if (!player || !canvas) return;
+                const settings = this.settings;
+                const margin = settings.margin || 90;
+                const safeTop = Math.max(margin, this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : margin);
+                const minDistance = settings.appleSpawnNearPlayerMinDistance || 80;
+                const maxDistanceSetting = settings.appleSpawnNearPlayerMaxDistance || (minDistance + 160);
+                const maxDistance = Math.max(minDistance + 20, maxDistanceSetting);
+                const appleRadius = settings.appleRadius || 20;
+                const segmentRadius = settings.segmentRadius || (settings.segmentSize || 40) / 2;
+                const baseSnakePadding = segmentRadius + appleRadius + 12;
+                const avoidApplePadding = appleRadius * 2 + 16;
+                const desiredDistance = (minDistance + maxDistance) * 0.5;
 
-                  const clampX = (x) => Math.max(margin, Math.min(canvas.width - margin, x));
-                  const clampY = (y) => Math.max(safeTop, Math.min(canvas.height - margin, y));
+                const originX = player.x;
+                const originY = player.y;
 
-                  let bestCandidate = null;
+                const clampX = (x) => Math.max(margin, Math.min(canvas.width - margin, x));
+                const clampY = (y) => Math.max(safeTop, Math.min(canvas.height - margin, y));
 
-                  const evaluateCandidate = (rawX, rawY, paddingMultiplier = 1) => {
-                      const x = clampX(rawX);
-                      const y = clampY(rawY);
-                      const dxPlayer = x - player.x;
-                      const dyPlayer = y - player.y;
-                      const distToPlayer = Math.hypot(dxPlayer, dyPlayer);
-                      if (distToPlayer < minDistance * 0.75 || distToPlayer > maxDistance * 1.2) return null;
+                let bestCandidate = null;
 
-                      const snakePadding = baseSnakePadding * paddingMultiplier;
-                      let minSnakeGapSq = Infinity;
-                      for (let i = 0; i < this.segments.length; i++) {
-                          const seg = this.segments[i];
-                          const dxSeg = x - seg.x;
-                          const dySeg = y - seg.y;
-                          const limit = (seg.radius || segmentRadius) + snakePadding;
-                          const limitSq = limit * limit;
-                          const distSq = dxSeg * dxSeg + dySeg * dySeg;
-                          if (distSq <= limitSq) {
-                              return null;
-                          }
-                          const gapSq = distSq - limitSq;
-                          if (gapSq < minSnakeGapSq) minSnakeGapSq = gapSq;
-                      }
+                const evaluateCandidate = (rawX, rawY, paddingMultiplier = 1) => {
+                    const x = clampX(rawX);
+                    const y = clampY(rawY);
+                    const dxPlayer = x - originX;
+                    const dyPlayer = y - originY;
+                    const distToPlayer = Math.hypot(dxPlayer, dyPlayer);
+                    if (distToPlayer < minDistance * 0.75 || distToPlayer > maxDistance * 1.2) return null;
 
-                      const appleAvoidSq = avoidApplePadding * avoidApplePadding;
-                      for (let j = 0; j < this.apples.length; j++) {
-                          const other = this.apples[j];
-                          const dxApple = x - other.x;
-                          const dyApple = y - other.y;
-                          if (dxApple * dxApple + dyApple * dyApple <= appleAvoidSq) {
-                              return null;
-                          }
-                      }
+                    const snakePadding = baseSnakePadding * paddingMultiplier;
+                    let minSnakeGapSq = Infinity;
+                    for (let i = 0; i < this.segments.length; i++) {
+                        const seg = this.segments[i];
+                        const dxSeg = x - seg.x;
+                        const dySeg = y - seg.y;
+                        const limit = (seg.radius || segmentRadius) + snakePadding;
+                        const limitSq = limit * limit;
+                        const distSq = dxSeg * dxSeg + dySeg * dySeg;
+                        if (distSq <= limitSq) {
+                            return null;
+                        }
+                        const gapSq = distSq - limitSq;
+                        if (gapSq < minSnakeGapSq) minSnakeGapSq = gapSq;
+                    }
 
-                      const distanceScore = Math.abs(distToPlayer - desiredDistance);
-                      return { x, y, distToPlayer, distanceScore, snakeGapScore: minSnakeGapSq };
-                  };
+                    const appleAvoidSq = avoidApplePadding * avoidApplePadding;
+                    for (let j = 0; j < this.apples.length; j++) {
+                        const other = this.apples[j];
+                        const dxApple = x - other.x;
+                        const dyApple = y - other.y;
+                        if (dxApple * dxApple + dyApple * dyApple <= appleAvoidSq) {
+                            return null;
+                        }
+                    }
 
-                  const considerCandidate = (x, y, paddingMultiplier = 1) => {
-                      const evaluated = evaluateCandidate(x, y, paddingMultiplier);
-                      if (!evaluated) return;
-                      if (!bestCandidate) {
-                          bestCandidate = evaluated;
-                          return;
-                      }
-                      if (evaluated.distanceScore + 2 < bestCandidate.distanceScore) {
-                          bestCandidate = evaluated;
-                          return;
-                      }
-                      if (Math.abs(evaluated.distanceScore - bestCandidate.distanceScore) <= 2 && evaluated.snakeGapScore > bestCandidate.snakeGapScore) {
-                          bestCandidate = evaluated;
-                      }
-                  };
+                    const distanceScore = Math.abs(distToPlayer - desiredDistance);
+                    return { x, y, distToPlayer, distanceScore, snakeGapScore: minSnakeGapSq };
+                };
 
-                  const randomAttempts = 24;
-                  for (let attempt = 0; attempt < randomAttempts; attempt++) {
-                      const angle = Math.random() * Math.PI * 2;
-                      const distance = minDistance + Math.random() * (maxDistance - minDistance);
-                      const x = player.x + Math.cos(angle) * distance;
-                      const y = player.y + Math.sin(angle) * distance;
-                      considerCandidate(x, y, 1);
-                  }
+                const considerCandidate = (x, y, paddingMultiplier = 1) => {
+                    const evaluated = evaluateCandidate(x, y, paddingMultiplier);
+                    if (!evaluated) return;
+                    if (!bestCandidate) {
+                        bestCandidate = evaluated;
+                        return;
+                    }
+                    if (evaluated.distanceScore + 2 < bestCandidate.distanceScore) {
+                        bestCandidate = evaluated;
+                        return;
+                    }
+                    if (Math.abs(evaluated.distanceScore - bestCandidate.distanceScore) <= 2 && evaluated.snakeGapScore > bestCandidate.snakeGapScore) {
+                        bestCandidate = evaluated;
+                    }
+                };
 
-                  if (!bestCandidate) {
-                      const samples = 12;
-                      for (let i = 0; i < samples; i++) {
-                          const angle = (Math.PI * 2 * i) / samples;
-                          const distance = desiredDistance;
-                          const x = player.x + Math.cos(angle) * distance;
-                          const y = player.y + Math.sin(angle) * distance;
-                          considerCandidate(x, y, 0.9);
-                          if (bestCandidate) break;
-                      }
-                  }
+                const randomAttempts = 24;
+                for (let attempt = 0; attempt < randomAttempts; attempt++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = minDistance + Math.random() * (maxDistance - minDistance);
+                    considerCandidate(originX + Math.cos(angle) * distance, originY + Math.sin(angle) * distance, 1);
+                }
 
-                  if (!bestCandidate) {
-                      const offsets = [
-                          { dx: minDistance, dy: 0 },
-                          { dx: -minDistance, dy: 0 },
-                          { dx: 0, dy: minDistance },
-                          { dx: 0, dy: -minDistance }
-                      ];
-                      for (let i = 0; i < offsets.length && !bestCandidate; i++) {
-                          const off = offsets[i];
-                          considerCandidate(player.x + off.dx, player.y + off.dy, 0.75);
-                      }
-                  }
+                if (!bestCandidate) {
+                    const samples = 12;
+                    for (let i = 0; i < samples; i++) {
+                        const angle = (Math.PI * 2 * i) / samples;
+                        const distance = desiredDistance;
+                        considerCandidate(originX + Math.cos(angle) * distance, originY + Math.sin(angle) * distance, 0.9);
+                        if (bestCandidate) break;
+                    }
+                }
 
-                  if (!bestCandidate) {
-                      const fallbackX = clampX(player.x + desiredDistance);
-                      const fallbackY = clampY(player.y);
-                      const fallbackCandidate = evaluateCandidate(fallbackX, fallbackY, 0.6);
-                      bestCandidate = fallbackCandidate || { x: fallbackX, y: fallbackY, distToPlayer: Math.hypot(fallbackX - player.x, fallbackY - player.y) };
-                  }
+                if (!bestCandidate) {
+                    const offsets = [
+                        { dx: minDistance, dy: 0 },
+                        { dx: -minDistance, dy: 0 },
+                        { dx: 0, dy: minDistance },
+                        { dx: 0, dy: -minDistance }
+                    ];
+                    for (let i = 0; i < offsets.length && !bestCandidate; i++) {
+                        const off = offsets[i];
+                        considerCandidate(originX + off.dx, originY + off.dy, 0.75);
+                    }
+                }
 
-                  const apple = {
-                      id: this.appleIdSeq++,
-                      x: bestCandidate.x,
-                      y: bestCandidate.y,
-                      radius: appleRadius,
-                      hp: settings.appleHp,
-                      maxHp: settings.appleHp,
-                      damageFlash: 0,
-                      spawnTime: Date.now(),
-                      pulse: Math.random() * Math.PI * 2,
-                      nextShotTime: Date.now() + (settings.appleShootIntervalMs || 4000)
-                  };
-                  this.apples.push(apple);
-                  if (this.game.effects) {
-                      this.game.effects.createBulletExplosion(bestCandidate.x, bestCandidate.y, '#ff3366');
-                  }
-              }
+                if (!bestCandidate) {
+                    const fallbackX = clampX(originX + desiredDistance);
+                    const fallbackY = clampY(originY);
+                    const fallbackCandidate = evaluateCandidate(fallbackX, fallbackY, 0.6);
+                    bestCandidate = fallbackCandidate || { x: fallbackX, y: fallbackY, distToPlayer: Math.hypot(fallbackX - originX, fallbackY - originY) };
+                }
+
+                const apple = {
+                    id: this.appleIdSeq++,
+                    x: bestCandidate.x,
+                    y: bestCandidate.y,
+                    radius: appleRadius,
+                    hp: settings.appleHp,
+                    maxHp: settings.appleHp,
+                    damageFlash: 0,
+                    spawnTime: Date.now(),
+                    pulse: Math.random() * Math.PI * 2,
+                    nextShotTime: Date.now() + (settings.appleShootIntervalMs || 4000)
+                };
+                this.apples.push(apple);
+                if (this.game.effects) {
+                    this.game.effects.createBulletExplosion(bestCandidate.x, bestCandidate.y, '#ff3366');
+                }
+            }
 
             _updateApples(now) {
                 const lifeMs = this.settings.appleLifetimeMs || 12000;
@@ -3741,7 +3781,6 @@
                     }
                     if (consumed) {
                         this._consumeApple(ai, false);
-                        this.nextAppleTime = Date.now() + this._nextAppleDelay();
                     }
                 }
             }
@@ -3925,7 +3964,6 @@
                 if (apple.hp <= 0) {
                     if (audio) audio.playSound('enemyDeath');
                     this._consumeApple(index, true);
-                    this.nextAppleTime = Date.now() + this._nextAppleDelay();
                 }
             }
 
