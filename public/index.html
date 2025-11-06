@@ -4613,6 +4613,8 @@
                   this.pendingBossDisplayName = '';
                 this.usedBossTypes = new Set();
                 this.defeatedBossCount = 0;
+                this.totalBossTimeExcluded = 0;
+                this.bossTimerPauseStart = 0;
 
                 // Helpers for UI-to-canvas mapping
                 // Cache boss-safe Y derived from XP bar on resize
@@ -4659,7 +4661,9 @@
                   this.pendingBossKey = this.determineNextBossKey();
                   this.pendingBossDisplayName = getBossDisplayName(this.pendingBossKey);
                   if (this.uiManager && this.uiManager.showBossWarning) this.uiManager.showBossWarning(this.pendingBossDisplayName);
-                  this.bossWarningEndTime = Date.now() + Math.round(5000 / Math.max(0.001, getTimeScale()));
+                    const now = Date.now();
+                    this.bossWarningEndTime = now + Math.round(5000 / Math.max(0.001, getTimeScale()));
+                    this.bossTimerPauseStart = now;
               }
 
               spawnBoss() {
@@ -4717,6 +4721,12 @@
 
             onBossDefeated() {
                 this.defeatedBossCount = (this.defeatedBossCount || 0) + 1;
+                if (this.bossTimerPauseStart) {
+                    const bossEndTime = Date.now();
+                    const duration = Math.max(0, bossEndTime - this.bossTimerPauseStart);
+                    this.totalBossTimeExcluded = (this.totalBossTimeExcluded || 0) + duration;
+                    this.bossTimerPauseStart = 0;
+                }
                 this.inBossPhase = false;
                 this.activeBoss = null;
                 if (this.shakeCanvas) this.shakeCanvas(8, 350);
@@ -5243,6 +5253,8 @@
                   this.pendingBossDisplayName = '';
                   this.usedBossTypes = new Set();
                   this.defeatedBossCount = 0;
+                  this.totalBossTimeExcluded = 0;
+                  this.bossTimerPauseStart = 0;
                 if (!this.tetrisManager) this.tetrisManager = new TetrisManager(this);
                 this.tetrisManager.reset();
                 
@@ -5390,11 +5402,14 @@
                                 if (this.initialSpawnDelayUntil) {
                                     this.initialSpawnDelayUntil += pauseDelta;
                                 }
+                                if (this.inBossPhase && this.bossTimerPauseStart) {
+                                    this.bossTimerPauseStart += pauseDelta;
+                                }
                                 this.audio.resumeMusic();
                                 this.audio.playSound('pauseDeactivate');
                                 quitButton.classList.remove('visible');
                                 if (this.uiManager && this.uiManager.hideControlsInfo) {
-                                    const elapsed = Date.now() - this.startTime;
+                                    const elapsed = this.getEffectiveElapsedTime();
                                     if (this.controlsInfoAutoHideTriggered || elapsed >= this.controlsInfoAutoHideDelay) {
                                         this.uiManager.hideControlsInfo();
                                         this.controlsInfoAutoHideTriggered = true;
@@ -5616,7 +5631,7 @@
                 if (this.upgradePause) return;
                 
                   const now = Date.now();
-                  const gameTime = now - this.startTime;
+                  const gameTime = this.getEffectiveElapsedTime(now);
                   if (this.gridBlink && this.gridBlink.activeUntil && now >= this.gridBlink.activeUntil) {
                       this.gridBlink.activeUntil = 0;
                       this.gridBlink.intensity = 0;
@@ -6514,7 +6529,7 @@
                     const idealTopY = this.canvas.height / 2 - 2 * lineHeight;
                     const statsStartY = Math.max(minTopY, idealTopY);
 
-                    const survivalTimeText = `Survival Time: ${this.formatTime(this.gameOverTime - this.startTime)}`;
+                    const survivalTimeText = `Survival Time: ${this.formatTime(this.getEffectiveElapsedTime(this.gameOverTime))}`;
                     const finalScoreText = `Final Score: ${this.score}`;
                     const survivedWavesText = `Survived Waves: ${this.currentWave}`;
                     const bestScoreText = `Best Score: ${this.bestScore}`;
@@ -6566,6 +6581,37 @@
                     this.ctx.fillText('Press ESC to return to lobby', this.canvas.width / 2, this.canvas.height / 2 + 230);
                     this.ctx.restore();
                 }
+            }
+
+            getEffectiveElapsedTime(nowOverride) {
+                if (this.inLobby) return 0;
+
+                let reference;
+                if (this.gameOver && this.gameOverTime) {
+                    reference = this.gameOverTime;
+                } else if (this.paused && this.pauseTime) {
+                    reference = this.pauseTime;
+                } else if (typeof nowOverride === 'number') {
+                    reference = nowOverride;
+                } else {
+                    reference = Date.now();
+                }
+
+                let elapsed = reference - this.startTime;
+                if (!Number.isFinite(elapsed) || elapsed < 0) {
+                    elapsed = 0;
+                }
+
+                let excluded = this.totalBossTimeExcluded || 0;
+                if (this.inBossPhase && this.bossTimerPauseStart) {
+                    const bossElapsed = reference - this.bossTimerPauseStart;
+                    if (Number.isFinite(bossElapsed) && bossElapsed > 0) {
+                        excluded += bossElapsed;
+                    }
+                }
+
+                const effective = elapsed - excluded;
+                return effective > 0 ? effective : 0;
             }
 
             formatTime(ms) {
@@ -6629,16 +6675,7 @@
                     }
                 }
                 
-                let gameTime;
-                if (this.gameOver) {
-                    gameTime = this.gameOverTime - this.startTime;
-                } else if (this.paused) {
-                    gameTime = this.pauseTime - this.startTime;
-                } else if (!this.inLobby) {
-                    gameTime = Date.now() - this.startTime;
-                } else {
-                    gameTime = 0;
-                }
+                  const gameTime = this.getEffectiveElapsedTime();
                 
                 if (!this.paused && !this.gameOver && !this.inLobby) {
                     this.update(timestamp);
@@ -6738,6 +6775,9 @@
                 this.waveStartTime += pauseDelta;
                 if (this.initialSpawnDelayUntil) {
                     this.initialSpawnDelayUntil += pauseDelta;
+                }
+                if (this.inBossPhase && this.bossTimerPauseStart) {
+                    this.bossTimerPauseStart += pauseDelta;
                 }
                 this.audio.resumeMusic();
             }
