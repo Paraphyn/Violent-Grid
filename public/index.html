@@ -1612,6 +1612,7 @@
             ignoreBossSafeZone: true,
             headCollisionDamage: 100,
             segmentCollisionDamage: 25,
+            playerStalkDistance: 140,
             appleRadius: 20,
             appleHp: 1000,
             appleLifetimeMs: 12000,
@@ -3425,10 +3426,19 @@
                 if (!head) return false;
 
                 const targetApple = this._findNearestApple(head);
+                let steeringTarget = null;
                 if (targetApple) {
+                    steeringTarget = targetApple;
                     this._steerTowardsApple(targetApple, now);
-                } else if (now >= this.nextTurnTime) {
-                    this._chooseDirection(false);
+                } else {
+                    this.targetAppleId = null;
+                    const playerTarget = this._computePlayerStalkTarget(head);
+                    if (playerTarget) {
+                        steeringTarget = playerTarget;
+                        this._steerTowardsTarget(playerTarget, now);
+                    } else if (now >= this.nextTurnTime) {
+                        this._chooseDirection(false);
+                    }
                 }
 
                 this._updateSpeedMultiplier(now);
@@ -3437,7 +3447,7 @@
                 const timeScale = getTimeScale();
                 const baseSpeed = this.settings.movementSpeed || 3.5;
                 const speed = baseSpeed * this.speedMultiplier * motion * timeScale;
-                this._moveHead(speed, targetApple, now);
+                this._moveHead(speed, steeringTarget, now);
                 this.pathPoints.unshift({ x: head.x, y: head.y });
                 if (this.pathPoints.length > 1) this._trimPath();
                 this._updateSegmentsFromPath();
@@ -3449,11 +3459,11 @@
                 return true;
             }
 
-            _chooseDirection(forceTurn, targetApple = null) {
+            _chooseDirection(forceTurn, targetPoint = null) {
                 const head = this.segments[0];
                 if (!head) return;
-                if (targetApple) {
-                    const desired = this._selectDirectionTowards(head, targetApple, forceTurn);
+                if (targetPoint) {
+                    const desired = this._selectDirectionTowards(head, targetPoint, forceTurn);
                     if (desired) {
                         if (desired.dx !== this.direction.dx || desired.dy !== this.direction.dy) {
                             this.direction = desired;
@@ -3471,7 +3481,7 @@
                 ];
                 const viable = options.filter(dir => {
                     if (!forceTurn && this._isOpposite(dir, this.direction)) return false;
-                    return this._directionKeepsInBounds(head, dir, targetApple);
+                    return this._directionKeepsInBounds(head, dir, targetPoint);
                 });
                 const pool = viable.length > 0 ? viable : options.filter(dir => !this._isOpposite(dir, this.direction));
                 const chosen = pool[Math.floor(Math.random() * pool.length)] || this.direction;
@@ -3482,7 +3492,7 @@
                 this.nextTurnTime = Date.now() + this._nextTurnDelay();
             }
 
-            _directionKeepsInBounds(head, dir, targetApple = null) {
+            _directionKeepsInBounds(head, dir, targetPoint = null) {
                 if (!head || !dir) return false;
                 const bounds = this._getMovementBounds();
                 const tolerance = typeof this.settings.edgeTolerance === 'number'
@@ -3497,16 +3507,16 @@
 
                 if (!nearBoundary) return true;
 
-                if (targetApple) {
-                    const appleWithinBounds =
-                        targetApple.x >= bounds.left && targetApple.x <= bounds.right &&
-                        targetApple.y >= bounds.top && targetApple.y <= bounds.bottom;
+                if (targetPoint) {
+                    const pointWithinBounds =
+                        targetPoint.x >= bounds.left && targetPoint.x <= bounds.right &&
+                        targetPoint.y >= bounds.top && targetPoint.y <= bounds.bottom;
 
-                    if (appleWithinBounds) {
-                        if (dir.dx < 0 && targetApple.x <= head.x) return true;
-                        if (dir.dx > 0 && targetApple.x >= head.x) return true;
-                        if (dir.dy < 0 && targetApple.y <= head.y) return true;
-                        if (dir.dy > 0 && targetApple.y >= head.y) return true;
+                    if (pointWithinBounds) {
+                        if (dir.dx < 0 && targetPoint.x <= head.x) return true;
+                        if (dir.dx > 0 && targetPoint.x >= head.x) return true;
+                        if (dir.dy < 0 && targetPoint.y <= head.y) return true;
+                        if (dir.dy > 0 && targetPoint.y >= head.y) return true;
                     }
                 }
 
@@ -3533,16 +3543,16 @@
                 head.y = Math.max(bounds.top, Math.min(bounds.bottom, head.y));
             }
 
-            _moveHead(step, targetApple, now) {
+            _moveHead(step, targetPoint, now) {
                 const head = this.segments[0];
                 if (!head) return;
                 const bounds = this._getMovementBounds();
                 let nextX = head.x + this.direction.dx * step;
                 let nextY = head.y + this.direction.dy * step;
                 if (nextX < bounds.left || nextX > bounds.right || nextY < bounds.top || nextY > bounds.bottom) {
-                    this._chooseDirection(true, targetApple);
-                    if (now && targetApple) {
-                        this.targetAppleId = targetApple.id || null;
+                    this._chooseDirection(true, targetPoint);
+                    if (now && targetPoint && 'id' in targetPoint) {
+                        this.targetAppleId = targetPoint.id || null;
                     }
                     nextX = head.x + this.direction.dx * step;
                     nextY = head.y + this.direction.dy * step;
@@ -3589,11 +3599,11 @@
                 return nearest;
             }
 
-            _selectDirectionTowards(head, apple, forceTurn = false) {
-                if (!head || !apple) return null;
+            _selectDirectionTowards(head, target, forceTurn = false) {
+                if (!head || !target) return null;
                 const threshold = 4;
-                const dx = apple.x - head.x;
-                const dy = apple.y - head.y;
+                const dx = target.x - head.x;
+                const dy = target.y - head.y;
                 const candidates = [];
                 if (Math.abs(dx) > threshold) {
                     candidates.push({ dx: dx > 0 ? 1 : -1, dy: 0, weight: Math.abs(dx) });
@@ -3604,7 +3614,7 @@
                 if (candidates.length === 0) return null;
                 candidates.sort((a, b) => b.weight - a.weight);
 
-                const viable = candidates.filter(dir => this._directionKeepsInBounds(head, dir, apple));
+                const viable = candidates.filter(dir => this._directionKeepsInBounds(head, dir, target));
                 const pool = viable.length > 0 ? viable : candidates;
 
                 const current = pool.find(dir => dir.dx === this.direction.dx && dir.dy === this.direction.dy);
@@ -3621,16 +3631,46 @@
                 return fallback ? { dx: fallback.dx, dy: fallback.dy } : null;
             }
 
-            _steerTowardsApple(apple, now) {
+            _steerTowardsTarget(target, now, options = {}) {
                 const head = this.segments[0];
-                if (!head || !apple) return;
-                const desired = this._selectDirectionTowards(head, apple, false);
+                if (!head || !target) return;
+                const desired = this._selectDirectionTowards(head, target, !!options.forceTurn);
                 if (!desired) return;
                 if (desired.dx === this.direction.dx && desired.dy === this.direction.dy) return;
                 this.direction = desired;
                 this._alignHeadToGrid();
                 this.nextTurnTime = now + this._nextTurnDelay();
-                this.targetAppleId = apple.id || null;
+                if (options.rememberTargetId && target && 'id' in target) {
+                    this.targetAppleId = target.id || null;
+                }
+            }
+
+            _steerTowardsApple(apple, now) {
+                if (!apple) return;
+                this._steerTowardsTarget(apple, now, { rememberTargetId: true });
+            }
+
+            _computePlayerStalkTarget(head) {
+                const player = this.game && this.game.player;
+                if (!player || !head) return null;
+                const bounds = this._getMovementBounds();
+                const desiredDistance = this.settings.playerStalkDistance || 140;
+                const dx = player.x - head.x;
+                const dy = player.y - head.y;
+                const dist = Math.hypot(dx, dy);
+                let targetX = player.x;
+                let targetY = player.y;
+                if (dist < desiredDistance * 0.6) {
+                    const angle = dist > 0 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
+                    targetX = player.x - Math.cos(angle) * desiredDistance;
+                    targetY = player.y - Math.sin(angle) * desiredDistance;
+                }
+                targetX = Math.max(bounds.left, Math.min(bounds.right, targetX));
+                targetY = Math.max(bounds.top, Math.min(bounds.bottom, targetY));
+                return {
+                    x: Math.round(targetX),
+                    y: Math.round(targetY)
+                };
             }
 
             _maybeShootApple(apple, now) {
@@ -3986,6 +4026,7 @@
                 if (this._beamHitSet && this._beamHitSet.has(effect)) return false;
                 let hit = false;
                 let blocked = false;
+                let headDamaged = false;
                 if (typeof effect.intersectsCircle === 'function') {
                     for (let i = 0; i < this.segments.length; i++) {
                         const seg = this.segments[i];
@@ -3998,6 +4039,14 @@
                                     effects.createHitEffect(seg.x, seg.y);
                                 }
                             }
+                            if (seg.type === 'head') {
+                                const damage = Math.max(0, effect.damage || 0);
+                                if (damage > 0) {
+                                    this._applyDamageToSegment(seg, damage, effects, audio);
+                                    headDamaged = true;
+                                    if (!this.alive) break;
+                                }
+                            }
                         }
                     }
                     for (let i = this.apples.length - 1; i >= 0; i--) {
@@ -4008,6 +4057,7 @@
                         }
                     }
                 }
+                if (headDamaged) hit = true;
                 if (hit && this._beamHitSet) {
                     this._beamHitSet.add(effect);
                 }
