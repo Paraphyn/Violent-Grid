@@ -118,6 +118,50 @@
         .xp-gain-overlay { position: absolute; top: 0; height: 100%; background: rgba(255,255,255,0.85); pointer-events: none; opacity: 0; }
         .xp-label { top: 80px; left: calc(50% - 180px - 10px); font-size: 20px; }
         .xp-level { top: 80px; left: calc(50% + 180px - 10px); font-size: 20px; }
+
+        /* Boss Health Bar */
+        .boss-health-bar {
+            top: 72px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 420px;
+            height: 24px;
+            border: 3px solid #ffffff;
+            background: rgba(0, 0, 0, 0.35);
+            overflow: hidden;
+            display: none;
+        }
+        .boss-health-bar-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, #ff4a4a 0%, #b30000 100%);
+            box-shadow: 0 0 12px rgba(255, 64, 64, 0.7);
+        }
+        .boss-health-bar-recent {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 0;
+            background: rgba(255, 255, 255, 0.55);
+            opacity: 0;
+        }
+        .boss-health-bar-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: 1px;
+            text-shadow: 0 0 6px rgba(0, 0, 0, 0.7);
+            pointer-events: none;
+            white-space: nowrap;
+        }
         
         /* Lobby Screen Styles */
         /* Theme spacing variables (editable via controls) */
@@ -524,6 +568,11 @@
     <div class="ui xp-label">XP</div>
     <div class="ui xp-bar"><div class="xp-bar-fill" id="xpFill"></div></div>
     <div class="ui xp-level" id="xpLevel">Lv. 1</div>
+    <div class="ui boss-health-bar" id="bossHealthBar" style="display: none;">
+        <div class="boss-health-bar-fill" id="bossHealthFill"></div>
+        <div class="boss-health-bar-recent" id="bossHealthRecent"></div>
+        <div class="boss-health-bar-text" id="bossHealthText">BOSS HP</div>
+    </div>
     <div class="ui controls">Controls >>> WASD: Move | L.Mouse: Bullets | Hold R.Mouse: Railgun | M.Mouse: Rockets | Space: Mines | Shift: Dash</div>
     <!-- DEV: FPS indicator -->
     <div class="ui fps" id="fps" style="display: none;">FPS: 60</div>
@@ -2732,7 +2781,7 @@
                     stroke = this.damageFlash > 0 ? '#ffffff' : this.strokeColor;
                 }
                 ShapeRenderer.drawShape(ctx, this.x, this.y, this.type, this.radius, color, stroke);
-                if (this.maxHealth > 50) {
+                if (this.maxHealth > 50 && !this.isBoss) {
                     const w = this.radius * 2, h = 4;
                     ctx.fillStyle = 'rgba(100, 0, 0, 0.7)';
                     ctx.fillRect(this.x - w/2, this.y - this.radius - 10, w, h);
@@ -2751,6 +2800,21 @@
                         ctx.fillRect(overlayStart, this.y - this.radius - 10, overlayWidth, h);
                     }
                 }
+            }
+
+            getHealthInfo() {
+                const max = Math.max(1, Number(this.maxHealth || this.health || 1));
+                const current = Math.max(0, Number(this.health || 0));
+                const type = this.type || '';
+                return {
+                    current,
+                    max,
+                    recentDamage: Math.max(0, this.recentDamage || 0),
+                    recentDamageFade: Math.max(0, this.recentDamageFade || 0),
+                    recentDamageFadeMax: 45,
+                    label: type ? getBossDisplayName(type) : '',
+                    bossKey: type
+                };
             }
         }
 
@@ -3063,6 +3127,7 @@
                 this.game = game;
                 this.hp = TETRIS_SETTINGS.bossHp;
                 this.maxHp = TETRIS_SETTINGS.bossHp;
+                    this.bossKey = 'tetris_cross_boss';
                 this.width = 80;
                 this.height = 80;
                 // position in upper center under XP bar
@@ -3118,7 +3183,25 @@
                     }
                     this.lastShoot = now;
                 }
+                if (this.recentDamageFade > 0) {
+                    this.recentDamageFade = Math.max(0, this.recentDamageFade - t);
+                    if (this.recentDamageFade === 0) {
+                        this.recentDamage = 0;
+                    }
+                }
                 return true;
+            }
+
+            getHealthInfo() {
+                return {
+                    current: Math.max(0, this.hp || 0),
+                    max: Math.max(1, this.maxHp || 1),
+                    recentDamage: Math.max(0, this.recentDamage || 0),
+                    recentDamageFade: Math.max(0, this.recentDamageFade || 0),
+                    recentDamageFadeMax: 45,
+                    label: getBossDisplayName(this.bossKey),
+                    bossKey: this.bossKey
+                };
             }
 
             takeRailgunDamage(damage, fullCharge) {
@@ -3175,8 +3258,8 @@
                             }
                         }
                     }
-                    if (this.game.effects && this.game.effects.createXPRing) {
-                        this.game.effects.createXPRing(this.x, this.y, 22, 200);
+                    if (this.game && typeof this.game._dropXpAt === 'function') {
+                        this.game._dropXpAt(this.x, this.y, 22, 200, { source: this, force: true });
                     }
                     if (this.game.audio) this.game.audio.playSound('bossDefeated');
                     return false; // dead
@@ -3210,22 +3293,6 @@
                 ctx.lineWidth = 4;
                 ctx.arc(this.x, this.y, 63, 0, Math.PI * 2);
                 ctx.stroke();
-                // HP bar with recent damage overlay
-                const w = 120, h = 6;
-                ctx.fillStyle = 'rgba(100, 0, 0, 0.7)';
-                ctx.fillRect(this.x - w/2, this.y - 74, w, h);
-                ctx.fillStyle = 'rgba(255, 60, 60, 0.95)';
-                const pct = Math.max(0, Math.min(1, this.hp / this.maxHp));
-                ctx.fillRect(this.x - w/2, this.y - 74, w * pct, h);
-                if (this.recentDamageFade && this.recentDamageFade > 0 && this.maxHp > 0) {
-                    this.recentDamageFade = Math.max(0, this.recentDamageFade - getTimeScale());
-                    const recentPct = Math.min(1, (this.recentDamage || 0) / this.maxHp);
-                    const overlayStart = this.x - w/2 + w * pct;
-                    const overlayWidth = Math.max(0, w * recentPct);
-                    const alpha = Math.max(0, this.recentDamageFade / 45);
-                    ctx.fillStyle = `rgba(255,255,255,${0.9 * alpha})`;
-                    ctx.fillRect(overlayStart, this.y - 74, overlayWidth, h);
-                }
                 ctx.restore();
             }
         }
@@ -3240,6 +3307,7 @@
                 this.apples = [];
                 this.direction = { dx: 1, dy: 0 };
                 this.alive = true;
+                    this.bossKey = 'vector_snake_boss';
                 const now = Date.now();
                 this.spawnTimestamp = now;
                 this.nextTurnTime = now + this._nextTurnDelay();
@@ -3456,6 +3524,12 @@
                 this._updateAppleSpawning(now, timeScale);
                 this._updateApples(now);
                 this._checkAppleConsumption();
+                if (this.headRecentDamageFade > 0) {
+                    this.headRecentDamageFade = Math.max(0, this.headRecentDamageFade - timeScale);
+                    if (this.headRecentDamageFade === 0) {
+                        this.headRecentDamage = 0;
+                    }
+                }
                 return true;
             }
 
@@ -4143,8 +4217,8 @@
                         this.game.effects.createExplosion(seg.x, seg.y, 'square', seg.radius * 1.4);
                     }
                     const head = this.segments[0];
-                    if (head) {
-                        this.game.effects.createXPRing(head.x, head.y, 28, 240);
+                    if (head && typeof this.game._dropXpAt === 'function') {
+                        this.game._dropXpAt(head.x, head.y, 28, 240, { source: this, force: true });
                     }
                 }
                 if (this.game) {
@@ -4189,7 +4263,6 @@
                 if (!ctx) return;
                 this._drawApples(ctx);
                 this._drawSnake(ctx);
-                this._drawHeadHealthBar(ctx);
             }
 
             _drawApples(ctx) {
@@ -4245,28 +4318,21 @@
                 }
             }
 
-            _drawHeadHealthBar(ctx) {
-                const head = this.segments[0];
-                if (!head) return;
-                const width = 160;
-                const height = 8;
-                const yOffset = head.radius + 34;
-                ctx.save();
-                ctx.fillStyle = 'rgba(40, 0, 40, 0.7)';
-                ctx.fillRect(head.x - width / 2, head.y - yOffset, width, height);
-                const pct = head.maxHp > 0 ? Math.max(0, Math.min(1, head.hp / head.maxHp)) : 0;
-                ctx.fillStyle = '#ff2a70';
-                ctx.fillRect(head.x - width / 2, head.y - yOffset, width * pct, height);
-                if (this.headRecentDamageFade > 0 && head.maxHp > 0) {
-                    this.headRecentDamageFade = Math.max(0, this.headRecentDamageFade - getTimeScale());
-                    const recentPct = Math.min(1, this.headRecentDamage / head.maxHp);
-                    const overlayStart = head.x - width / 2 + width * pct;
-                    const overlayWidth = width * recentPct;
-                    const alpha = Math.max(0, this.headRecentDamageFade / 45);
-                    ctx.fillStyle = `rgba(255, 255, 255, ${0.9 * alpha})`;
-                    ctx.fillRect(overlayStart, head.y - yOffset, overlayWidth, height);
-                }
-                ctx.restore();
+            getHealthInfo() {
+                const head = this.segments ? this.segments[0] : null;
+                const settings = this.settings || {};
+                const current = head ? Math.max(0, head.hp || 0) : 0;
+                const maxSource = head && head.maxHp ? head.maxHp : settings.headHp;
+                const max = Math.max(1, maxSource || current || 1);
+                return {
+                    current,
+                    max,
+                    recentDamage: Math.max(0, this.headRecentDamage || 0),
+                    recentDamageFade: Math.max(0, this.headRecentDamageFade || 0),
+                    recentDamageFadeMax: 45,
+                    label: getBossDisplayName(this.bossKey),
+                    bossKey: this.bossKey
+                };
             }
 
             isDefeated() {
@@ -4286,6 +4352,10 @@
                 this.xpLabelEl = document.querySelector('.xp-label');
                 this.xpBarEl = document.querySelector('.xp-bar');
                 this.xpLevelEl = document.querySelector('.xp-level');
+                this.bossHealthBarEl = document.getElementById('bossHealthBar');
+                this.bossHealthFillEl = document.getElementById('bossHealthFill');
+                this.bossHealthRecentEl = document.getElementById('bossHealthRecent');
+                this.bossHealthTextEl = document.getElementById('bossHealthText');
                 this.uiElements = [
                     this.enemiesEl,
                     this.timerEl,
@@ -4318,6 +4388,9 @@
                 this.timerValueEl = document.getElementById('timer');
                 this.waveValueEl = document.getElementById('wave');
                 this._lastFpsLabelTs = 0;
+                this.bossHealthActive = false;
+                this.bossHealthLabel = '';
+                this._cachedBossBarWidth = 0;
             }
 
             updateFPS(fps) {
@@ -4340,6 +4413,71 @@
                 if (this.waveValueEl) this.waveValueEl.textContent = wave;
             }
 
+            showBossHealthUI(labelText = '') {
+                this.bossHealthActive = true;
+                this.bossHealthLabel = (typeof labelText === 'string') ? labelText.trim() : '';
+                const label = this.bossHealthLabel || 'BOSS HP';
+                if (this.timerEl) this.timerEl.style.display = 'none';
+                if (this.xpLabelEl) this.xpLabelEl.style.display = 'none';
+                if (this.xpBarEl) this.xpBarEl.style.display = 'none';
+                if (this.xpLevelEl) this.xpLevelEl.style.display = 'none';
+                if (this.bossHealthBarEl) {
+                    this.bossHealthBarEl.style.display = 'block';
+                    this._cachedBossBarWidth = this.bossHealthBarEl.clientWidth;
+                }
+                if (this.bossHealthTextEl) this.bossHealthTextEl.textContent = label;
+                if (this.bossHealthRecentEl) {
+                    this.bossHealthRecentEl.style.opacity = '0';
+                    this.bossHealthRecentEl.style.width = '0';
+                }
+            }
+
+            hideBossHealthUI() {
+                this.bossHealthActive = false;
+                this.bossHealthLabel = '';
+                if (this.timerEl) this.timerEl.style.display = '';
+                if (this.xpLabelEl) this.xpLabelEl.style.display = '';
+                if (this.xpBarEl) this.xpBarEl.style.display = '';
+                if (this.xpLevelEl) this.xpLevelEl.style.display = '';
+                if (this.bossHealthBarEl) this.bossHealthBarEl.style.display = 'none';
+                if (this.bossHealthRecentEl) {
+                    this.bossHealthRecentEl.style.opacity = '0';
+                    this.bossHealthRecentEl.style.width = '0';
+                }
+            }
+
+            updateBossHealthBar(current, max, options = {}) {
+                if (!this.bossHealthActive || !this.bossHealthBarEl) return;
+                const clampedMax = Math.max(1, Number(max) || 0);
+                const clampedCurrent = Math.max(0, Math.min(clampedMax, Number(current) || 0));
+                const pct = Math.max(0, Math.min(1, clampedCurrent / clampedMax));
+                if (this.bossHealthFillEl) {
+                    this.bossHealthFillEl.style.width = `${pct * 100}%`;
+                }
+                const label = (typeof options.label === 'string' && options.label.trim())
+                    ? options.label.trim()
+                    : (this.bossHealthLabel || 'BOSS HP');
+                if (this.bossHealthTextEl) {
+                    this.bossHealthTextEl.textContent = label;
+                }
+                if (this.bossHealthRecentEl) {
+                    const recentDamage = Math.max(0, Number(options.recentDamage) || 0);
+                    const recentFade = Math.max(0, Number(options.recentDamageFade) || 0);
+                    const recentFadeMax = Math.max(1, Number(options.recentDamageFadeMax) || 45);
+                    if (recentDamage > 0 && recentFade > 0 && clampedMax > 0) {
+                        const overlayPct = Math.max(0, Math.min(1, recentDamage / clampedMax));
+                        const maxOverlay = Math.max(0, Math.min(1 - pct, overlayPct));
+                        this.bossHealthRecentEl.style.left = `${pct * 100}%`;
+                        this.bossHealthRecentEl.style.width = `${maxOverlay * 100}%`;
+                        const alpha = Math.max(0, Math.min(1, recentFade / recentFadeMax));
+                        this.bossHealthRecentEl.style.opacity = `${0.85 * alpha}`;
+                    } else {
+                        this.bossHealthRecentEl.style.opacity = '0';
+                        this.bossHealthRecentEl.style.width = '0';
+                    }
+                }
+            }
+
             hideUI() {
                 this.uiElements.forEach(element => {
                     if (element) {
@@ -4348,6 +4486,7 @@
                 });
                 this.hideNextWaveTimer();
                   this.clearBossNameLabel();
+                if (this.bossHealthBarEl) this.bossHealthBarEl.style.display = 'none';
             }
 
             showUI() {
@@ -4356,6 +4495,9 @@
                         element.classList.remove('hidden');
                     }
                 });
+                if (!this.bossHealthActive && this.bossHealthBarEl) {
+                    this.bossHealthBarEl.style.display = 'none';
+                }
             }
             
             showControlsInfo() {
@@ -4632,56 +4774,60 @@
                 return bosses.length > 0 ? bosses : ['rhombus_boss'];
             }
 
-              determineNextBossKey() {
-                  const firstBossKey = BOSS_SELECTION.firstBossKey || 'vector_snake_boss';
-                  if (this.defeatedBossCount === 0) {
-                      return firstBossKey;
-                  }
-                  const bossTypes = this.getAvailableBossTypes();
-                  if (!Array.isArray(bossTypes) || bossTypes.length === 0) {
-                      return firstBossKey;
-                  }
-                  if (!this.usedBossTypes) this.usedBossTypes = new Set();
-                  let unused = bossTypes.filter(b => !this.usedBossTypes.has(b));
-                  if (unused.length === 0) {
-                      this.usedBossTypes.clear();
-                      unused = bossTypes.slice();
-                  }
-                  const pool = unused.length > 0 ? unused : bossTypes;
-                  return pool[Math.floor(Math.random() * pool.length)] || firstBossKey;
-              }
+            determineNextBossKey() {
+                const firstBossKey = BOSS_SELECTION.firstBossKey || 'vector_snake_boss';
+                if (this.defeatedBossCount === 0) {
+                    return firstBossKey;
+                }
+                const bossTypes = this.getAvailableBossTypes();
+                if (!Array.isArray(bossTypes) || bossTypes.length === 0) {
+                    return firstBossKey;
+                }
+                if (!this.usedBossTypes) this.usedBossTypes = new Set();
+                let unused = bossTypes.filter(b => !this.usedBossTypes.has(b));
+                if (unused.length === 0) {
+                    this.usedBossTypes.clear();
+                    unused = bossTypes.slice();
+                }
+                const pool = unused.length > 0 ? unused : bossTypes;
+                return pool[Math.floor(Math.random() * pool.length)] || firstBossKey;
+            }
 
-              triggerBossPhase() {
-                  if (this.inBossPhase) return;
-                  this.inBossPhase = true;
-                  this.activeBoss = null;
-                  this.waveStarted = false;
-                  this.pendingBossKey = this.determineNextBossKey();
-                  this.pendingBossDisplayName = getBossDisplayName(this.pendingBossKey);
-                  if (this.uiManager && this.uiManager.showBossWarning) this.uiManager.showBossWarning(this.pendingBossDisplayName);
-                  this.bossWarningEndTime = Date.now() + Math.round(5000 / Math.max(0.001, getTimeScale()));
-              }
+            triggerBossPhase() {
+                if (this.inBossPhase) return;
+                this.inBossPhase = true;
+                this.activeBoss = null;
+                this.waveStarted = false;
+                this._startTimerFreeze();
+                this.pendingBossKey = this.determineNextBossKey();
+                this.pendingBossDisplayName = getBossDisplayName(this.pendingBossKey);
+                if (this.uiManager && this.uiManager.showBossWarning) this.uiManager.showBossWarning(this.pendingBossDisplayName);
+                this.bossWarningEndTime = Date.now() + Math.round(5000 / Math.max(0.001, getTimeScale()));
+            }
 
-              spawnBoss() {
-                  const firstBossKey = BOSS_SELECTION.firstBossKey || 'vector_snake_boss';
-                  let chosen = this.pendingBossKey;
-                  if (!chosen) {
-                      chosen = this.determineNextBossKey();
-                  }
-                  if (!chosen) {
-                      chosen = firstBossKey;
-                  }
-                  if (!this.usedBossTypes) this.usedBossTypes = new Set();
-                  this.usedBossTypes.add(chosen);
+            spawnBoss() {
+                const firstBossKey = BOSS_SELECTION.firstBossKey || 'vector_snake_boss';
+                let chosen = this.pendingBossKey;
+                if (!chosen) {
+                    chosen = this.determineNextBossKey();
+                }
+                if (!chosen) {
+                    chosen = firstBossKey;
+                }
+                if (!this.usedBossTypes) this.usedBossTypes = new Set();
+                this.usedBossTypes.add(chosen);
 
-                  const clearPendingBoss = () => {
-                      this.pendingBossKey = null;
-                      this.pendingBossDisplayName = '';
-                  };
+                const clearPendingBoss = () => {
+                    this.pendingBossKey = null;
+                    this.pendingBossDisplayName = '';
+                };
+
+                const bossLabel = this.pendingBossDisplayName || getBossDisplayName(chosen);
 
                 if (chosen === 'vector_snake_boss') {
                     this.activeBoss = new VectorSnakeBoss(this);
-                      clearPendingBoss();
+                    if (this.uiManager && this.uiManager.showBossHealthUI) this.uiManager.showBossHealthUI(bossLabel);
+                    clearPendingBoss();
                     if (this.uiManager && this.uiManager.hideBossWarning) this.uiManager.hideBossWarning();
                     return;
                 }
@@ -4691,7 +4837,8 @@
                     this.activeBoss = new TetrisCrossBoss(this);
                     // Ensure tetromino manager reset at boss start
                     if (this.tetrisManager) this.tetrisManager.reset();
-                      clearPendingBoss();
+                    if (this.uiManager && this.uiManager.showBossHealthUI) this.uiManager.showBossHealthUI(bossLabel);
+                    clearPendingBoss();
                     if (this.uiManager && this.uiManager.hideBossWarning) this.uiManager.hideBossWarning();
                     return;
                 }
@@ -4711,13 +4858,18 @@
                 boss.spawnShieldUntil = Date.now() + 1500;
                 this.enemies.push(boss);
                 this.activeBoss = boss;
-                  clearPendingBoss();
+                if (this.uiManager && this.uiManager.showBossHealthUI) this.uiManager.showBossHealthUI(bossLabel);
+                clearPendingBoss();
                 if (this.uiManager && this.uiManager.hideBossWarning) this.uiManager.hideBossWarning();
             }
 
             onBossDefeated() {
                 this.defeatedBossCount = (this.defeatedBossCount || 0) + 1;
                 this.inBossPhase = false;
+                this._stopTimerFreeze();
+                if (this.uiManager && this.uiManager.hideBossHealthUI) {
+                    this.uiManager.hideBossHealthUI();
+                }
                 this.activeBoss = null;
                 if (this.shakeCanvas) this.shakeCanvas(8, 350);
                 // Start pause before next group like regular wave pause
@@ -5243,6 +5395,7 @@
                   this.pendingBossDisplayName = '';
                   this.usedBossTypes = new Set();
                   this.defeatedBossCount = 0;
+                  this._resetTimerFreeze();
                 if (!this.tetrisManager) this.tetrisManager = new TetrisManager(this);
                 this.tetrisManager.reset();
                 
@@ -5308,6 +5461,9 @@
                 } else {
                     this.uiManager.showUI();
                 }
+                  if (this.uiManager && this.uiManager.hideBossHealthUI) {
+                      this.uiManager.hideBossHealthUI();
+                  }
             }
 
             setupEventListeners() {
@@ -5390,6 +5546,7 @@
                                 if (this.initialSpawnDelayUntil) {
                                     this.initialSpawnDelayUntil += pauseDelta;
                                 }
+                                  this._adjustTimerFreezeReference(pauseDelta);
                                 this.audio.resumeMusic();
                                 this.audio.playSound('pauseDeactivate');
                                 quitButton.classList.remove('visible');
@@ -5722,7 +5879,7 @@
                                     if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
                                     if (!enemy.takeDamage(r.damage, this.effects, this.score, this.ctx, this.audio)) {
                                         this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                        { const config = ENEMY_TYPES[enemy.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(enemy.x, enemy.y, Math.max(8, enemy.radius * 0.25), xp); }
+                                        this._dropXpForEnemy(enemy);
                                         if (enemy.type === 'rhombus') {
                                             // special rhombus death handled elsewhere if needed
                                         }
@@ -5783,7 +5940,7 @@
                                     if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
                                     if (!enemy.takeDamage(m.damage, this.effects, this.score, this.ctx, this.audio)) {
                                         this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                        { const config = ENEMY_TYPES[enemy.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(enemy.x, enemy.y, Math.max(8, enemy.radius * 0.25), xp); }
+                                        this._dropXpForEnemy(enemy);
                                         if (enemy.type === 'rhombus') {
                                             // special rhombus death handled elsewhere if needed
                                         }
@@ -5858,7 +6015,7 @@
                                     if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
                                     if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio)) {
                                         this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                        { const config = ENEMY_TYPES[en.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(en.x, en.y, Math.max(8, en.radius * 0.25), xp); }
+                                                this._dropXpForEnemy(en);
                                         if (en.type === 'rhombus') {
                                             this.spawnTrianglesAround(en.x, en.y);
                                         }
@@ -5927,7 +6084,7 @@
                                           if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
                                           if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio)) {
                                               this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                              { const config = ENEMY_TYPES[en.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(en.x, en.y, Math.max(8, en.radius * 0.25), xp); }
+                                              this._dropXpForEnemy(en);
                                               if (en.type === 'rhombus') {
                                                   this.spawnTrianglesAround(en.x, en.y);
                                               }
@@ -5981,7 +6138,7 @@
                                     if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
                                     if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio)) {
                                         this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                        { const config = ENEMY_TYPES[en.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(en.x, en.y, Math.max(8, en.radius * 0.25), xp); }
+                                        this._dropXpForEnemy(en);
                                         if (en.type === 'rhombus') {
                                             this.spawnTrianglesAround(en.x, en.y);
                                         }
@@ -6034,7 +6191,7 @@
                                           if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
                                           if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio)) {
                                               this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                              { const config = ENEMY_TYPES[en.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(en.x, en.y, Math.max(8, en.radius * 0.25), xp); }
+                                              this._dropXpForEnemy(en);
                                               if (en.type === 'rhombus') {
                                                   this.spawnTrianglesAround(en.x, en.y);
                                               }
@@ -6077,7 +6234,7 @@
 							this.player.takeDamage(enemy.damage, (this.player.x + enemy.x) / 2, (this.player.y + enemy.y) / 2, this.effects, this.audio);
 						} else {
 							this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-							{ const config = ENEMY_TYPES[enemy.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(enemy.x, enemy.y, Math.max(8, enemy.radius * 0.25), xp); }
+						this._dropXpForEnemy(enemy);
 							if (enemy.type === 'rhombus') {
 								this.spawnTrianglesAround(enemy.x, enemy.y);
 							}
@@ -6109,7 +6266,7 @@
                                 bullet._dead = true;
                                 if (!enemy.takeDamage(bullet.damage, this.effects, this.score, this.ctx, this.audio)) {
                                     this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                    { const config = ENEMY_TYPES[enemy.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(enemy.x, enemy.y, Math.max(8, enemy.radius * 0.25), xp); }
+                                    this._dropXpForEnemy(enemy);
                                     if (enemy.type === 'rhombus') {
                                         this.spawnTrianglesAround(enemy.x, enemy.y);
                                     }
@@ -6139,7 +6296,7 @@
 							if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
                                 if (!enemy.takeDamage(effect.damage, this.effects, this.score, this.ctx, this.audio)) {
                                     this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                    { const config = ENEMY_TYPES[enemy.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(enemy.x, enemy.y, Math.max(8, enemy.radius * 0.25), xp); }
+                                    this._dropXpForEnemy(enemy);
                                     if (enemy.type === 'rhombus') {
                                         this.spawnTrianglesAround(enemy.x, enemy.y);
                                     }
@@ -6514,7 +6671,7 @@
                     const idealTopY = this.canvas.height / 2 - 2 * lineHeight;
                     const statsStartY = Math.max(minTopY, idealTopY);
 
-                    const survivalTimeText = `Survival Time: ${this.formatTime(this.gameOverTime - this.startTime)}`;
+                    const survivalTimeText = `Survival Time: ${this.formatTime(this._getDisplayedGameTimeMs())}`;
                     const finalScoreText = `Final Score: ${this.score}`;
                     const survivedWavesText = `Survived Waves: ${this.currentWave}`;
                     const bestScoreText = `Best Score: ${this.bestScore}`;
@@ -6639,6 +6796,7 @@
                 } else {
                     gameTime = 0;
                 }
+                const displayedGameTimeMs = this._getDisplayedGameTimeMs();
                 
                 if (!this.paused && !this.gameOver && !this.inLobby) {
                     this.update(timestamp);
@@ -6694,9 +6852,15 @@
                 
                 // Only update UI if not in lobby
                 if (!this.inLobby) {
-                    this.uiManager.updateStats(this.score, this.enemiesKilled, this.formatTime(gameTime), this.currentWave);
+                    this.uiManager.updateStats(this.score, this.enemiesKilled, this.formatTime(displayedGameTimeMs), this.currentWave);
                     // Keep XP bar in sync
                     this.uiManager.updateXPBar(this.playerXp, this.playerXpRequired, this.playerLevel);
+                    if (this.inBossPhase && this.activeBoss && this.uiManager && this.uiManager.updateBossHealthBar) {
+                        const bossInfo = this._getActiveBossHealthInfo();
+                        if (bossInfo) {
+                            this.uiManager.updateBossHealthBar(bossInfo.current, bossInfo.max, bossInfo);
+                        }
+                    }
                 }
                 
                 requestAnimationFrame(t => this.loop(t));
@@ -6739,7 +6903,135 @@
                 if (this.initialSpawnDelayUntil) {
                     this.initialSpawnDelayUntil += pauseDelta;
                 }
+                this._adjustTimerFreezeReference(pauseDelta);
                 this.audio.resumeMusic();
+            }
+
+            _getTimerReferenceNow() {
+                if (this.gameOver && this.gameOverTime) return this.gameOverTime;
+                if (this.paused && this.pauseTime) return this.pauseTime;
+                if (this.inLobby) return this.startTime;
+                return Date.now();
+            }
+
+            _adjustTimerFreezeReference(delta) {
+                if (!delta || !this.timerFreezeStartRef) return;
+                this.timerFreezeStartRef += delta;
+            }
+
+            _startTimerFreeze() {
+                if (this.timerFreezeStartRef) return;
+                this.timerFreezeStartRef = this._getTimerReferenceNow();
+            }
+
+            _stopTimerFreeze() {
+                if (!this.timerFreezeStartRef) return;
+                const reference = this._getTimerReferenceNow();
+                const elapsed = Math.max(0, reference - this.timerFreezeStartRef);
+                this.timerFrozenTotal += elapsed;
+                this.timerFreezeStartRef = 0;
+            }
+
+            _resetTimerFreeze() {
+                this.timerFreezeStartRef = 0;
+                this.timerFrozenTotal = 0;
+            }
+
+            _getDisplayedGameTimeMs() {
+                const reference = this._getTimerReferenceNow();
+                let base = Math.max(0, reference - this.startTime);
+                let freezeOffset = this.timerFrozenTotal;
+                if (this.timerFreezeStartRef) {
+                    freezeOffset += Math.max(0, reference - this.timerFreezeStartRef);
+                }
+                const result = Math.max(0, base - freezeOffset);
+                return result;
+            }
+
+            _getActiveBossHealthInfo() {
+                const boss = this.activeBoss;
+                if (!boss) return null;
+                let info = null;
+                if (typeof boss.getHealthInfo === 'function') {
+                    try {
+                        info = boss.getHealthInfo();
+                    } catch (e) {
+                        info = null;
+                    }
+                }
+                if (!info && typeof boss.health === 'number') {
+                    const max = typeof boss.maxHealth === 'number' ? boss.maxHealth : boss.health;
+                    info = { current: boss.health, max };
+                }
+                if (!info || typeof info !== 'object') return null;
+                const current = Math.max(0, Number(info.current ?? info.health ?? 0));
+                const max = Math.max(1, Number(info.max ?? info.maxHealth ?? current || 1));
+                const recentDamage = Math.max(0, Number(info.recentDamage ?? 0));
+                const recentDamageFade = Math.max(0, Number(info.recentDamageFade ?? 0));
+                const recentDamageFadeMax = Math.max(1, Number(info.recentDamageFadeMax ?? 45));
+                let label = '';
+                if (typeof info.label === 'string' && info.label.trim()) {
+                    label = info.label.trim();
+                }
+                const key = info.key || info.bossKey || boss.bossKey || boss.type || this.pendingBossKey;
+                if (!label && key) {
+                    label = getBossDisplayName(key) || '';
+                }
+                if (!label && this.pendingBossDisplayName) {
+                    label = this.pendingBossDisplayName;
+                }
+                return {
+                    current,
+                    max,
+                    recentDamage,
+                    recentDamageFade,
+                    recentDamageFadeMax,
+                    label
+                };
+            }
+
+            _isBossEntity(entity) {
+                if (!entity) return false;
+                if (typeof entity.isBoss === 'boolean' && entity.isBoss) return true;
+                const key = entity.type || entity.bossKey;
+                if (!key) return false;
+                const config = ENEMY_TYPES[key];
+                return !!(config && (config.role === 'boss' || config.isBoss));
+            }
+
+            _canSpawnXpFor(source, force = false) {
+                if (force) return true;
+                if (!this.inBossPhase) return true;
+                if (!source) return false;
+                if (Array.isArray(source)) {
+                    return source.some(item => this._isBossEntity(item));
+                }
+                return this._isBossEntity(source);
+            }
+
+            _dropXpAt(x, y, radius, amount, options = {}) {
+                if (!this.effects || !this.effects.createXPRing) return;
+                const force = !!options.force;
+                const source = options.source || null;
+                if (!this._canSpawnXpFor(source, force)) return;
+                const xpAmount = Number(amount) || 0;
+                if (xpAmount <= 0) return;
+                const size = Math.max(4, radius || 12);
+                this.effects.createXPRing(x, y, size, xpAmount);
+            }
+
+            _dropXpForEnemy(enemy, override = {}) {
+                if (!enemy) return;
+                const config = ENEMY_TYPES[enemy.type] || {};
+                const xpAmount = Number(override.amount != null ? override.amount : (config.xp || 0));
+                if (xpAmount <= 0) return;
+                const radius = override.radius != null
+                    ? override.radius
+                    : Math.max(8, (enemy.radius || 0) * 0.25);
+                const x = override.x != null ? override.x : enemy.x;
+                const y = override.y != null ? override.y : enemy.y;
+                const force = !!override.force;
+                this._dropXpAt(x, y, radius, xpAmount, { source: enemy, force });
             }
 
             triggerLevelUpSelection() {
