@@ -1584,7 +1584,10 @@
             gridSize: 58,
             turnIntervalMs: 1600,
             turnIntervalVarianceMs: 600,
-            margin: 90,
+            margin: 0,
+            edgePadding: 34,
+            edgeTolerance: 4,
+            ignoreBossSafeZone: true,
             headCollisionDamage: 100,
             segmentCollisionDamage: 25,
             appleRadius: 20,
@@ -3210,20 +3213,72 @@
                 this._initSnake();
             }
 
+            _getHeadRadiusValue() {
+                if (this.segments && this.segments.length > 0) {
+                    const head = this.segments[0];
+                    if (head) {
+                        if (typeof head.radius === 'number') return head.radius;
+                        if (typeof head.size === 'number') return head.size / 2;
+                    }
+                }
+                const settings = this.settings || {};
+                if (typeof settings.headRadius === 'number') return settings.headRadius;
+                if (typeof settings.headSize === 'number') return settings.headSize / 2;
+                if (typeof settings.segmentRadius === 'number') return settings.segmentRadius;
+                if (typeof settings.segmentSize === 'number') return settings.segmentSize / 2;
+                return 30;
+            }
+
+            _getMovementBounds() {
+                const canvas = this.game.canvas;
+                const settings = this.settings || {};
+                const headRadius = this._getHeadRadiusValue();
+                const rawEdgePadding = Math.max(headRadius, settings.edgePadding || headRadius);
+                const horizontalPadding = Math.max(rawEdgePadding, settings.horizontalPadding || rawEdgePadding);
+                const verticalPadding = Math.max(rawEdgePadding, settings.verticalPadding || rawEdgePadding);
+                const leftPadding = Math.max(horizontalPadding, settings.leftPadding || horizontalPadding);
+                const rightPadding = Math.max(horizontalPadding, settings.rightPadding || horizontalPadding);
+                let topPadding = Math.max(verticalPadding, settings.topPadding || verticalPadding);
+                if (!settings.ignoreBossSafeZone && this.game.getBossSafeMinCenterY) {
+                    topPadding = Math.max(topPadding, this.game.getBossSafeMinCenterY());
+                }
+                const bottomPadding = Math.max(verticalPadding, settings.bottomPadding || verticalPadding);
+
+                const left = Math.max(headRadius, Math.min(canvas.width - headRadius, leftPadding));
+                const right = Math.max(left, Math.min(canvas.width - headRadius, canvas.width - Math.max(headRadius, rightPadding)));
+                const top = Math.max(headRadius, Math.min(canvas.height - headRadius, topPadding));
+                const bottom = Math.max(top, Math.min(canvas.height - headRadius, canvas.height - Math.max(headRadius, bottomPadding)));
+
+                return { left, right, top, bottom };
+            }
+
+            _getAppleSpawnBounds() {
+                const canvas = this.game.canvas;
+                const bounds = this._getMovementBounds();
+                const appleRadius = this.settings.appleRadius || 20;
+                const left = Math.max(bounds.left, appleRadius);
+                const right = Math.max(left, Math.min(bounds.right, canvas.width - appleRadius));
+                const top = Math.max(bounds.top, appleRadius);
+                const bottom = Math.max(top, Math.min(bounds.bottom, canvas.height - appleRadius));
+                return { left, right, top, bottom };
+            }
+
             _initSnake() {
                 const settings = this.settings;
                 const canvas = this.game.canvas;
-                const safeY = this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : 140;
-                const margin = Math.max(settings.margin, safeY);
                 const grid = settings.gridSize || 48;
+                const bounds = this._getMovementBounds();
                 const headX = Math.round((canvas.width / 2) / grid) * grid;
-                const headY = Math.max(margin, Math.ceil(margin / grid) * grid);
+                const centerY = (bounds.top + bounds.bottom) * 0.5;
+                const headY = Math.round(centerY / grid) * grid;
+                const clampedHeadX = Math.max(bounds.left, Math.min(bounds.right, headX));
+                const clampedHeadY = Math.max(bounds.top, Math.min(bounds.bottom, headY));
                 const headSize = settings.headSize || (settings.headRadius ? settings.headRadius * 2 : settings.segmentSize || (settings.segmentRadius || 20) * 2);
                 const headRadius = settings.headRadius || headSize / 2;
                 const head = {
                     type: 'head',
-                    x: headX,
-                    y: headY,
+                    x: clampedHeadX,
+                    y: clampedHeadY,
                     radius: headRadius,
                     size: headSize,
                     hp: settings.headHp,
@@ -3377,7 +3432,7 @@
                 ];
                 const viable = options.filter(dir => {
                     if (!forceTurn && this._isOpposite(dir, this.direction)) return false;
-                    return this._directionKeepsInBounds(head, dir);
+                    return this._directionKeepsInBounds(head, dir, targetApple);
                 });
                 const pool = viable.length > 0 ? viable : options.filter(dir => !this._isOpposite(dir, this.direction));
                 const chosen = pool[Math.floor(Math.random() * pool.length)] || this.direction;
@@ -3388,17 +3443,35 @@
                 this.nextTurnTime = Date.now() + this._nextTurnDelay();
             }
 
-            _directionKeepsInBounds(head, dir) {
-                const canvas = this.game.canvas;
-                const settings = this.settings;
-                const margin = settings.margin || 90;
-                const safeTop = Math.max(margin, this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : margin);
-                const lookahead = (settings.gridSize || 48) * 2;
-                const futureX = head.x + dir.dx * lookahead;
-                const futureY = head.y + dir.dy * lookahead;
-                if (futureX < margin || futureX > canvas.width - margin) return false;
-                if (futureY < safeTop || futureY > canvas.height - margin) return false;
-                return true;
+            _directionKeepsInBounds(head, dir, targetApple = null) {
+                if (!head || !dir) return false;
+                const bounds = this._getMovementBounds();
+                const tolerance = typeof this.settings.edgeTolerance === 'number'
+                    ? Math.max(0, this.settings.edgeTolerance)
+                    : Math.max(6, (this.settings.movementSpeed || 4) * 2);
+
+                const nearBoundary =
+                    (dir.dx < 0 && head.x <= bounds.left + tolerance) ||
+                    (dir.dx > 0 && head.x >= bounds.right - tolerance) ||
+                    (dir.dy < 0 && head.y <= bounds.top + tolerance) ||
+                    (dir.dy > 0 && head.y >= bounds.bottom - tolerance);
+
+                if (!nearBoundary) return true;
+
+                if (targetApple) {
+                    const appleWithinBounds =
+                        targetApple.x >= bounds.left && targetApple.x <= bounds.right &&
+                        targetApple.y >= bounds.top && targetApple.y <= bounds.bottom;
+
+                    if (appleWithinBounds) {
+                        if (dir.dx < 0 && targetApple.x <= head.x) return true;
+                        if (dir.dx > 0 && targetApple.x >= head.x) return true;
+                        if (dir.dy < 0 && targetApple.y <= head.y) return true;
+                        if (dir.dy > 0 && targetApple.y >= head.y) return true;
+                    }
+                }
+
+                return false;
             }
 
             _isOpposite(a, b) {
@@ -3411,42 +3484,37 @@
                 if (!head) return;
                 const settings = this.settings;
                 const grid = settings.gridSize || 48;
-                const canvas = this.game.canvas;
-                const margin = settings.margin || 90;
-                const safeTop = Math.max(margin, this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : margin);
+                const bounds = this._getMovementBounds();
                 if (this.direction.dx !== 0) {
                     head.y = Math.round(head.y / grid) * grid;
                 } else if (this.direction.dy !== 0) {
                     head.x = Math.round(head.x / grid) * grid;
                 }
-                head.x = Math.max(margin, Math.min(canvas.width - margin, head.x));
-                head.y = Math.max(safeTop, Math.min(canvas.height - margin, head.y));
+                head.x = Math.max(bounds.left, Math.min(bounds.right, head.x));
+                head.y = Math.max(bounds.top, Math.min(bounds.bottom, head.y));
             }
 
             _moveHead(step, targetApple, now) {
                 const head = this.segments[0];
                 if (!head) return;
-                const settings = this.settings;
-                const canvas = this.game.canvas;
-                const margin = settings.margin || 90;
-                const safeTop = Math.max(margin, this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : margin);
+                const bounds = this._getMovementBounds();
                 let nextX = head.x + this.direction.dx * step;
                 let nextY = head.y + this.direction.dy * step;
-                if (nextX < margin || nextX > canvas.width - margin || nextY < safeTop || nextY > canvas.height - margin) {
+                if (nextX < bounds.left || nextX > bounds.right || nextY < bounds.top || nextY > bounds.bottom) {
                     this._chooseDirection(true, targetApple);
                     if (now && targetApple) {
                         this.targetAppleId = targetApple.id || null;
                     }
                     nextX = head.x + this.direction.dx * step;
                     nextY = head.y + this.direction.dy * step;
-                    if (nextX < margin || nextX > canvas.width - margin || nextY < safeTop || nextY > canvas.height - margin) {
+                    if (nextX < bounds.left || nextX > bounds.right || nextY < bounds.top || nextY > bounds.bottom) {
                         this._chooseDirection(true);
                         nextX = head.x + this.direction.dx * step;
                         nextY = head.y + this.direction.dy * step;
                     }
                 }
-                head.x = Math.max(margin, Math.min(canvas.width - margin, nextX));
-                head.y = Math.max(safeTop, Math.min(canvas.height - margin, nextY));
+                head.x = Math.max(bounds.left, Math.min(bounds.right, nextX));
+                head.y = Math.max(bounds.top, Math.min(bounds.bottom, nextY));
                 head.x = Math.round(head.x);
                 head.y = Math.round(head.y);
             }
@@ -3497,7 +3565,7 @@
                 if (candidates.length === 0) return null;
                 candidates.sort((a, b) => b.weight - a.weight);
 
-                const viable = candidates.filter(dir => this._directionKeepsInBounds(head, dir));
+                const viable = candidates.filter(dir => this._directionKeepsInBounds(head, dir, apple));
                 const pool = viable.length > 0 ? viable : candidates;
 
                 const current = pool.find(dir => dir.dx === this.direction.dx && dir.dy === this.direction.dy);
@@ -3620,11 +3688,10 @@
 
             _spawnAppleNearPlayer() {
                 const player = this.game.player;
-                const canvas = this.game.canvas;
-                if (!player || !canvas) return;
+                if (!player || !this.game || !this.game.canvas) return;
                 const settings = this.settings;
-                const margin = settings.margin || 90;
-                const safeTop = Math.max(margin, this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : margin);
+                const appleBounds = this._getAppleSpawnBounds();
+                const bounds = this._getMovementBounds();
                 const minDistance = settings.appleSpawnNearPlayerMinDistance || 80;
                 const maxDistanceSetting = settings.appleSpawnNearPlayerMaxDistance || (minDistance + 160);
                 const maxDistance = Math.max(minDistance + 20, maxDistanceSetting);
@@ -3637,14 +3704,15 @@
                 const originX = player.x;
                 const originY = player.y;
 
-                const clampX = (x) => Math.max(margin, Math.min(canvas.width - margin, x));
-                const clampY = (y) => Math.max(safeTop, Math.min(canvas.height - margin, y));
+                const clampX = (x) => Math.max(appleBounds.left, Math.min(appleBounds.right, x));
+                const clampY = (y) => Math.max(appleBounds.top, Math.min(appleBounds.bottom, y));
 
                 let bestCandidate = null;
 
                 const evaluateCandidate = (rawX, rawY, paddingMultiplier = 1) => {
                     const x = clampX(rawX);
                     const y = clampY(rawY);
+                    if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) return null;
                     const dxPlayer = x - originX;
                     const dyPlayer = y - originY;
                     const distToPlayer = Math.hypot(dxPlayer, dyPlayer);
