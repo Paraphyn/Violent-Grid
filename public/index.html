@@ -1565,7 +1565,7 @@
 
         ENEMY_TYPES['vector_snake_boss'] = {
             role: 'boss',
-            health: 3000, // Head health; custom boss logic handles per-segment health
+            health: 5000, // Head health; custom boss logic handles per-segment health
             speed: 0,
             size: 78,
             points: 1200,
@@ -1581,7 +1581,7 @@
         // Declared as a boss type so it appears in the boss pool, but it has a custom class/behavior below
         ENEMY_TYPES['tetris_cross_boss'] = {
             role: 'boss',
-            health: 1650,
+            health: 2500,
             speed: 0, // handled by custom boss class
             size: 60, // collision radius approximation
             points: 950,
@@ -1595,17 +1595,17 @@
 
         // Vector Snake boss config
         const VECTOR_SNAKE_SETTINGS = Object.freeze({
-            headHp: 3000,
-            segmentHp: 500,
+            headHp: 5000,
+            segmentHp: 700,
             headRadius: 29,
             headSize: 58,
             segmentRadius: 29,
             segmentSize: 58,
             segmentSpacing: 58,
-            movementSpeed: 3.6,
+            movementSpeed: 4,
             gridSize: 58,
-            turnIntervalMs: 1600,
-            turnIntervalVarianceMs: 600,
+            turnIntervalMs: 1200,
+            turnIntervalVarianceMs: 500,
             margin: 0,
             edgePadding: 34,
             edgeTolerance: 4,
@@ -1616,14 +1616,14 @@
             appleRadius: 20,
             appleHp: 1000,
             appleLifetimeMs: 12000,
-            appleSpawnIntervalMs: 7000,
-            appleSpawnIntervalVarianceMs: 2000,
+            appleSpawnIntervalMs: 5000,
+            appleSpawnIntervalVarianceMs: 1000,
             appleSpawnReductionIntervalMs: 7000,
             appleSpawnReductionPercent: 0.03,
             appleMinSpawnIntervalMs: 2500,
             appleSpawnRampDurationMs: 90000,
-            growthPerApple: 2,
-            maxApples: 2,
+            growthPerApple: 3,
+            maxApples: 5,
             speedIncreaseIntervalMs: 5000,
             speedIncreasePercent: 0.02,
             appleShootIntervalMs: 4000,
