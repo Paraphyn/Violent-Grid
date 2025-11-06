@@ -572,7 +572,7 @@
         <div class="upgrade-wrapper">
             <div class="upgrade-overlay-title">SELECT UPGRADE</div>
             <div class="upgrade-container" id="upgradeContainer"></div>
-            <div class="upgrade-hint">Press numbers [1], [2], [3] to select the Upgrade.</div>
+            <div class="upgrade-hint">Press keys [ 1 ] [ 2 ] [ 3 ] to select the Upgrade.</div>
         </div>
     </div>
 
@@ -4372,7 +4372,7 @@
 
             showNextWaveTimer(seconds) {
                 if (this.nextWaveElement) {
-                    this.nextWaveElement.textContent = `Next Wave in ${seconds}...`;
+                    this.nextWaveElement.textContent = `Next Wave in ${seconds}`;
                     this.nextWaveElement.style.display = 'block';
                 }
             }
