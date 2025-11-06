@@ -1620,17 +1620,17 @@
             appleRadius: 20,
             appleHp: 1000,
             appleLifetimeMs: 12000,
-            appleSpawnIntervalMs: 5000,
-            appleSpawnIntervalVarianceMs: 1000,
-            appleSpawnReductionIntervalMs: 7000,
+            appleSpawnIntervalMs: 4000,
+            appleSpawnIntervalVarianceMs: 500,
+            appleSpawnReductionIntervalMs: 6000,
             appleSpawnReductionPercent: 0.03,
-            appleMinSpawnIntervalMs: 2500,
+            appleMinSpawnIntervalMs: 2200,
             appleSpawnRampDurationMs: 90000,
             growthPerApple: 3,
             maxApples: 5,
             speedIncreaseIntervalMs: 5000,
             speedIncreasePercent: 0.02,
-            appleShootIntervalMs: 2500,
+            appleShootIntervalMs: 1000,
             appleBulletSpeed: 5,
             appleBulletDamage: 25,
             appleBlastRadius: 100,
@@ -1645,7 +1645,7 @@
 
         const BOSS_NAME_MAP = Object.freeze({
             vector_snake_boss: 'VECTOR SNAKE',
-            tetris_cross_boss: 'TETRIS X',
+            tetris_cross_boss: 'TETRIS+',
             rhombus_boss: 'RHOMBOSS'
         });
 
@@ -1695,7 +1695,7 @@
             { timer: 168000, wave: 12, enemies: { cubes: 0, triangles: 25, octagons: 0, rhombuses: 25 }, spawnTime: 35000 }
         ];
 
-        const INITIAL_ENEMY_SPAWN_DELAY_MS = 3000;
+        const INITIAL_ENEMY_SPAWN_DELAY_MS = 2500;
 
         // Option: use grouped wave randomization (set to true to enable)
         const USE_WAVE_GROUPS = true;
@@ -1882,7 +1882,7 @@
                     particleCount: 8,
                     angle: 0,
                     rotationSpeed: 0.12,
-                    baseRadius: 25,
+                    baseRadius: 30,
                     radiusOffset: 6,
                     baseSize: 2.5,
                     maxOpacityBase: 0.5,
@@ -3082,7 +3082,7 @@
                 this.active = true;
                 this.damageFlash = 0;
                 this.lastShoot = 0;
-                this.shootCooldownMs = 2000;
+                this.shootCooldownMs = 1100;
                 this.recentDamage = 0;
                 this.recentDamageFade = 0;
             }
