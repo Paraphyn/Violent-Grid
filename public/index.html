@@ -1613,6 +1613,10 @@
             headCollisionDamage: 100,
             segmentCollisionDamage: 25,
             playerStalkDistance: 140,
+            directionRandomnessChance: 0.35,
+            playerChaseJitterDistance: 90,
+            playerChaseJitterMinDistance: 30,
+            playerChaseJitterIntervalMs: 900,
             appleRadius: 20,
             appleHp: 1000,
             appleLifetimeMs: 12000,
@@ -1626,7 +1630,7 @@
             maxApples: 5,
             speedIncreaseIntervalMs: 5000,
             speedIncreasePercent: 0.02,
-            appleShootIntervalMs: 4000,
+            appleShootIntervalMs: 2500,
             appleBulletSpeed: 5,
             appleBulletDamage: 25,
             appleBlastRadius: 100,
@@ -3239,8 +3243,10 @@
                 this.pathPoints = [];
                 this.apples = [];
                 this.direction = { dx: 1, dy: 0 };
+                this.entryPhase = null;
                 this.alive = true;
                 const now = Date.now();
+                this.chaseJitterState = { offsetX: 0, offsetY: 0, expiresAt: now };
                 this.spawnTimestamp = now;
                 this.nextTurnTime = now + this._nextTurnDelay();
                 this.appleIdSeq = 1;
@@ -3308,17 +3314,57 @@
                 const canvas = this.game.canvas;
                 const grid = settings.gridSize || 48;
                 const bounds = this._getMovementBounds();
-                const headX = Math.round((canvas.width / 2) / grid) * grid;
-                const centerY = (bounds.top + bounds.bottom) * 0.5;
-                const headY = Math.round(centerY / grid) * grid;
-                const clampedHeadX = Math.max(bounds.left, Math.min(bounds.right, headX));
-                const clampedHeadY = Math.max(bounds.top, Math.min(bounds.bottom, headY));
+                const randomBetween = (min, max) => {
+                    if (min >= max) return min;
+                    return min + Math.random() * (max - min);
+                };
+                const alignToGrid = (value) => Math.round(value / grid) * grid;
+                let targetX = alignToGrid(randomBetween(bounds.left, bounds.right));
+                let targetY = alignToGrid(randomBetween(bounds.top, bounds.bottom));
+                targetX = Math.max(bounds.left, Math.min(bounds.right, targetX));
+                targetY = Math.max(bounds.top, Math.min(bounds.bottom, targetY));
                 const headSize = settings.headSize || (settings.headRadius ? settings.headRadius * 2 : settings.segmentSize || (settings.segmentRadius || 20) * 2);
                 const headRadius = settings.headRadius || headSize / 2;
+                const segmentSize = settings.segmentSize || (settings.segmentRadius || 20) * 2;
+                const segmentRadius = settings.segmentRadius || segmentSize / 2;
+                const segmentSpacing = settings.segmentSpacing || segmentSize;
+                const initialTail = 6;
+                const offscreenDistance = segmentSpacing * (initialTail + 3) + headRadius;
+                const sides = ['left', 'right', 'top', 'bottom'];
+                const side = sides[Math.floor(Math.random() * sides.length)];
+                let startX = targetX;
+                let startY = targetY;
+                let direction = { dx: 1, dy: 0 };
+                switch (side) {
+                    case 'right':
+                        direction = { dx: -1, dy: 0 };
+                        startX = canvas.width + offscreenDistance;
+                        break;
+                    case 'top':
+                        direction = { dx: 0, dy: 1 };
+                        startY = -offscreenDistance;
+                        break;
+                    case 'bottom':
+                        direction = { dx: 0, dy: -1 };
+                        startY = canvas.height + offscreenDistance;
+                        break;
+                    default:
+                        direction = { dx: 1, dy: 0 };
+                        startX = -offscreenDistance;
+                        break;
+                }
+                if (direction.dx !== 0) {
+                    startY = targetY;
+                } else {
+                    startX = targetX;
+                }
+                startX = alignToGrid(startX);
+                startY = alignToGrid(startY);
+                this.direction = direction;
                 const head = {
                     type: 'head',
-                    x: clampedHeadX,
-                    y: clampedHeadY,
+                    x: startX,
+                    y: startY,
                     radius: headRadius,
                     size: headSize,
                     hp: settings.headHp,
@@ -3326,14 +3372,11 @@
                     damageFlash: 0
                 };
                 this.segments.push(head);
-                const initialTail = 6;
-                const segmentSize = settings.segmentSize || (settings.segmentRadius || 20) * 2;
-                const segmentRadius = settings.segmentRadius || segmentSize / 2;
                 for (let i = 1; i <= initialTail; i++) {
                     this.segments.push({
                         type: 'body',
-                        x: headX - i * settings.segmentSpacing,
-                        y: headY,
+                        x: startX - direction.dx * i * segmentSpacing,
+                        y: startY - direction.dy * i * segmentSpacing,
                         radius: segmentRadius,
                         size: segmentSize,
                         hp: settings.segmentHp,
@@ -3341,10 +3384,79 @@
                         damageFlash: 0
                     });
                 }
-                // Seed path history from initial segment layout (head -> tail order)
+                this.entryPhase = {
+                    active: true,
+                    side,
+                    targetX,
+                    targetY,
+                    speedMultiplier: 1.1
+                };
+                this.pathPoints.length = 0;
                 for (let i = 0; i < this.segments.length; i++) {
                     const seg = this.segments[i];
                     this.pathPoints.push({ x: Math.round(seg.x), y: Math.round(seg.y) });
+                }
+            }
+
+            _updateEntryPhase(now, head) {
+                const entry = this.entryPhase;
+                if (!entry || !entry.active || !head) return;
+                const motion = getMotionScale();
+                const timeScale = getTimeScale();
+                const baseSpeed = this.settings.movementSpeed || 3.5;
+                const entrySpeedMultiplier = entry.speedMultiplier || 1.1;
+                const step = baseSpeed * this.speedMultiplier * entrySpeedMultiplier * motion * timeScale;
+                head.x += this.direction.dx * step;
+                head.y += this.direction.dy * step;
+                const targetX = entry.targetX;
+                const targetY = entry.targetY;
+                let reachedX = this.direction.dx === 0;
+                let reachedY = this.direction.dy === 0;
+                if (!reachedX) {
+                    if (this.direction.dx > 0 && head.x >= targetX) {
+                        head.x = targetX;
+                        reachedX = true;
+                    } else if (this.direction.dx < 0 && head.x <= targetX) {
+                        head.x = targetX;
+                        reachedX = true;
+                    }
+                } else {
+                    head.x = targetX;
+                }
+                if (!reachedY) {
+                    if (this.direction.dy > 0 && head.y >= targetY) {
+                        head.y = targetY;
+                        reachedY = true;
+                    } else if (this.direction.dy < 0 && head.y <= targetY) {
+                        head.y = targetY;
+                        reachedY = true;
+                    }
+                } else {
+                    head.y = targetY;
+                }
+                head.x = Math.round(head.x);
+                head.y = Math.round(head.y);
+                this.pathPoints.unshift({ x: head.x, y: head.y });
+                if (this.pathPoints.length > 1) this._trimPath();
+                this._updateSegmentsFromPath();
+                this._updateDamageFlash();
+                if (this.appleSpawnController) {
+                    this.appleSpawnController.lastTimestamp = now;
+                    this.appleSpawnController.accumulatorMs = 0;
+                }
+                if (reachedX && reachedY) {
+                    entry.active = false;
+                    this._alignHeadToGrid();
+                    head.x = Math.round(head.x);
+                    head.y = Math.round(head.y);
+                    if (this.pathPoints.length > 0) {
+                        this.pathPoints[0].x = head.x;
+                        this.pathPoints[0].y = head.y;
+                    } else {
+                        this.pathPoints.unshift({ x: head.x, y: head.y });
+                    }
+                    this._updateSegmentsFromPath();
+                    this.nextTurnTime = now + this._nextTurnDelay();
                 }
             }
 
@@ -3424,6 +3536,10 @@
                 const now = Date.now();
                 const head = this.segments[0];
                 if (!head) return false;
+                if (this.entryPhase && this.entryPhase.active) {
+                    this._updateEntryPhase(now, head);
+                    return true;
+                }
 
                 const targetApple = this._findNearestApple(head);
                 let steeringTarget = null;
@@ -3432,7 +3548,7 @@
                     this._steerTowardsApple(targetApple, now);
                 } else {
                     this.targetAppleId = null;
-                    const playerTarget = this._computePlayerStalkTarget(head);
+                    const playerTarget = this._computePlayerStalkTarget(head, now);
                     if (playerTarget) {
                         steeringTarget = playerTarget;
                         this._steerTowardsTarget(playerTarget, now);
@@ -3620,6 +3736,19 @@
                 const current = pool.find(dir => dir.dx === this.direction.dx && dir.dy === this.direction.dy);
                 if (current) return { dx: current.dx, dy: current.dy };
 
+                const isPlayerTarget = target && target.targetType === 'player';
+                if (!forceTurn && isPlayerTarget) {
+                    const randomnessChance = this.settings.directionRandomnessChance || 0;
+                    if (randomnessChance > 0 && pool.length > 1 && Math.random() < randomnessChance) {
+                        const nonOppositePool = pool.filter(dir => !this._isOpposite(dir, this.direction));
+                        const choicePool = nonOppositePool.length > 0 ? nonOppositePool : pool;
+                        const randomChoice = choicePool[Math.floor(Math.random() * choicePool.length)];
+                        if (randomChoice) {
+                            return { dx: randomChoice.dx, dy: randomChoice.dy };
+                        }
+                    }
+                }
+
                 if (!forceTurn) {
                     const nonOpposite = pool.find(dir => !this._isOpposite(dir, this.direction));
                     if (nonOpposite) {
@@ -3650,7 +3779,7 @@
                 this._steerTowardsTarget(apple, now, { rememberTargetId: true });
             }
 
-            _computePlayerStalkTarget(head) {
+            _computePlayerStalkTarget(head, now) {
                 const player = this.game && this.game.player;
                 if (!player || !head) return null;
                 const bounds = this._getMovementBounds();
@@ -3667,15 +3796,52 @@
                 }
                 targetX = Math.max(bounds.left, Math.min(bounds.right, targetX));
                 targetY = Math.max(bounds.top, Math.min(bounds.bottom, targetY));
+                let target = {
+                    x: targetX,
+                    y: targetY,
+                    targetType: 'player'
+                };
+                if (typeof now === 'number' && Number.isFinite(now)) {
+                    target = this._applyPlayerChaseJitter(target, now) || target;
+                }
+                target.x = Math.round(Math.max(bounds.left, Math.min(bounds.right, target.x)));
+                target.y = Math.round(Math.max(bounds.top, Math.min(bounds.bottom, target.y)));
+                return target;
+            }
+
+            _applyPlayerChaseJitter(target, now) {
+                if (!target) return target;
+                if (!this.chaseJitterState) {
+                    this.chaseJitterState = { offsetX: 0, offsetY: 0, expiresAt: 0 };
+                }
+                const settings = this.settings || {};
+                const interval = Math.max(240, settings.playerChaseJitterIntervalMs || 900);
+                const segmentSpacing = settings.segmentSpacing || settings.segmentSize || (settings.segmentRadius || 20) * 2 || 40;
+                const maxDistance = Math.max(18, settings.playerChaseJitterDistance || segmentSpacing * 1.4);
+                const minSetting = settings.playerChaseJitterMinDistance;
+                const minDistance = Math.max(6, Math.min(maxDistance, typeof minSetting === 'number' ? minSetting : maxDistance * 0.35));
+                if (!this.chaseJitterState.expiresAt || now >= this.chaseJitterState.expiresAt) {
+                    const distance = minDistance + Math.random() * (maxDistance - minDistance);
+                    const angle = Math.random() * Math.PI * 2;
+                    this.chaseJitterState.offsetX = Math.cos(angle) * distance;
+                    this.chaseJitterState.offsetY = Math.sin(angle) * distance;
+                    this.chaseJitterState.expiresAt = now + interval;
+                }
+                const jitteredX = target.x + this.chaseJitterState.offsetX;
+                const jitteredY = target.y + this.chaseJitterState.offsetY;
+                const bounds = this._getMovementBounds();
+                const clampedX = Math.max(bounds.left, Math.min(bounds.right, jitteredX));
+                const clampedY = Math.max(bounds.top, Math.min(bounds.bottom, jitteredY));
                 return {
-                    x: Math.round(targetX),
-                    y: Math.round(targetY)
+                    x: clampedX,
+                    y: clampedY,
+                    targetType: target.targetType || 'player'
                 };
             }
 
             _maybeShootApple(apple, now) {
                 if (!apple || !this.game || !Array.isArray(this.game.enemyBullets)) return;
-                const interval = this.settings.appleShootIntervalMs || 4000;
+                const interval = this.settings.appleShootIntervalMs || 2500;
                 if (apple.nextShotTime === undefined) {
                     apple.nextShotTime = now + interval;
                 }
@@ -3942,12 +4108,12 @@
                     }
                     return;
                 }
-                  this._grow(this.settings.growthPerApple || 2);
-                  this._triggerAppleBlast(apple.x, apple.y);
-                  if (this.game && typeof this.game.triggerGridBlink === 'function') {
-                      this.game.triggerGridBlink(1.25, 640);
-                  }
-                  if (this.game.effects) {
+                this._grow(this.settings.growthPerApple || 3);
+                this._triggerAppleBlast(apple.x, apple.y);
+                if (this.game && typeof this.game.triggerGridBlink === 'function') {
+                    this.game.triggerGridBlink(1.25, 640);
+                }
+                if (this.game.effects) {
                     this.game.effects.createExplosion(apple.x, apple.y, 'square', apple.radius * 1.5);
                 }
                 if (this.game.audio) {
