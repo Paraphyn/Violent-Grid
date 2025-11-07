@@ -7160,9 +7160,15 @@
                 this.game = game;
                 this.upgrades = [
                     { key: 'health_1', level: 1, title: 'HEALTH', desc: 'Add 15 Health Points', image: 'health.png', apply: () => { this.game.player.maxHealth += 15; this.game.player.health = Math.min(this.game.player.maxHealth, this.game.player.health + 15); } },
+					{ key: 'health_2', level: 4, title: 'HEALTH 2', desc: 'Add 15 Health Points', image: 'health.png', apply: () => { this.game.player.maxHealth += 15; this.game.player.health = Math.min(this.game.player.maxHealth, this.game.player.health + 15); } },
+					{ key: 'health_3', level: 6, title: 'HEALTH 3', desc: 'Add 15 Health Points', image: 'health.png', apply: () => { this.game.player.maxHealth += 15; this.game.player.health = Math.min(this.game.player.maxHealth, this.game.player.health + 15); } },
                     { key: 'speed_1', level: 1, title: 'SPEED', desc: '+5% Speed', image: 'speed.png', apply: () => { this.game.player.speedMultiplier = (this.game.player.speedMultiplier || 1) * 1.05; } },
-                    { key: 'damage_1', level: 1, title: 'DAMAGE', desc: '+10% of Bullets Damage', image: 'damage.png', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
-                    { key: 'railgun_charge_3', level: 3, title: 'RAILGUN CHARGE', desc: '10% Faster Railgun Charge', image: 'railgun_charge.png', apply: () => { this.game.player.railgunChargeSpeedMultiplier = (this.game.player.railgunChargeSpeedMultiplier || 1) * 1.10; } }
+					{ key: 'speed_2', level: 4, title: 'SPEED 2', desc: '+5% Speed', image: 'speed.png', apply: () => { this.game.player.speedMultiplier = (this.game.player.speedMultiplier || 1) * 1.05; } },
+                    { key: 'speed_3', level: 6, title: 'SPEED 3', desc: '+5% Speed', image: 'speed.png', apply: () => { this.game.player.speedMultiplier = (this.game.player.speedMultiplier || 1) * 1.05; } },
+					{ key: 'damage_1', level: 1, title: 'DAMAGE', desc: '+10% of Bullets Damage', image: 'damage.png', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
+					{ key: 'damage_2', level: 4, title: 'DAMAGE 2', desc: '+10% of Bullets Damage', image: 'damage.png', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
+                    { key: 'damage_3', level: 6, title: 'DAMAGE 3', desc: '+10% of Bullets Damage', image: 'damage.png', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
+					{ key: 'railgun_charge_3', level: 3, title: 'RAILGUN CHARGE', desc: '10% Faster Railgun Charge', image: 'railgun_charge.png', apply: () => { this.game.player.railgunChargeSpeedMultiplier = (this.game.player.railgunChargeSpeedMultiplier || 1) * 1.10; } }
                 ];
                 this.taken = new Set();
                 this.currentOptions = [];
