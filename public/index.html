@@ -1643,6 +1643,17 @@
             firstBossKey: 'vector_snake_boss'
        });
 
+        function getFirstBossOverride() {
+            const candidate = BOSS_SELECTION.firstBossKey;
+            if (typeof candidate === 'string') {
+                const trimmed = candidate.trim();
+                if (trimmed.length > 0) {
+                    return trimmed;
+                }
+            }
+            return null;
+        }
+
         const BOSS_NAME_MAP = Object.freeze({
             vector_snake_boss: 'VECTOR SNAKE',
             tetris_cross_boss: 'TETRIS+',
@@ -4800,24 +4811,25 @@
                 return bosses.length > 0 ? bosses : ['rhombus_boss'];
             }
 
-              determineNextBossKey() {
-                  const firstBossKey = BOSS_SELECTION.firstBossKey || 'vector_snake_boss';
-                  if (this.defeatedBossCount === 0) {
-                      return firstBossKey;
-                  }
-                  const bossTypes = this.getAvailableBossTypes();
-                  if (!Array.isArray(bossTypes) || bossTypes.length === 0) {
-                      return firstBossKey;
-                  }
-                  if (!this.usedBossTypes) this.usedBossTypes = new Set();
-                  let unused = bossTypes.filter(b => !this.usedBossTypes.has(b));
-                  if (unused.length === 0) {
-                      this.usedBossTypes.clear();
-                      unused = bossTypes.slice();
-                  }
-                  const pool = unused.length > 0 ? unused : bossTypes;
-                  return pool[Math.floor(Math.random() * pool.length)] || firstBossKey;
-              }
+                determineNextBossKey() {
+                    const firstBossKey = getFirstBossOverride();
+                    if (this.defeatedBossCount === 0 && firstBossKey) {
+                        return firstBossKey;
+                    }
+                    const bossTypes = this.getAvailableBossTypes();
+                    if (!Array.isArray(bossTypes) || bossTypes.length === 0) {
+                        return firstBossKey || 'vector_snake_boss';
+                    }
+                    if (!this.usedBossTypes) this.usedBossTypes = new Set();
+                    let unused = bossTypes.filter(b => !this.usedBossTypes.has(b));
+                    if (unused.length === 0) {
+                        this.usedBossTypes.clear();
+                        unused = bossTypes.slice();
+                    }
+                    const pool = unused.length > 0 ? unused : bossTypes;
+                    const randomBoss = pool[Math.floor(Math.random() * pool.length)];
+                    return randomBoss || bossTypes[0] || firstBossKey || 'vector_snake_boss';
+                }
 
               triggerBossPhase() {
                   if (this.inBossPhase) return;
@@ -4832,17 +4844,23 @@
                     this.bossTimerPauseStart = now;
               }
 
-              spawnBoss() {
-                  const firstBossKey = BOSS_SELECTION.firstBossKey || 'vector_snake_boss';
-                  let chosen = this.pendingBossKey;
-                  if (!chosen) {
-                      chosen = this.determineNextBossKey();
-                  }
-                  if (!chosen) {
-                      chosen = firstBossKey;
-                  }
-                  if (!this.usedBossTypes) this.usedBossTypes = new Set();
-                  this.usedBossTypes.add(chosen);
+                spawnBoss() {
+                    const firstBossKey = getFirstBossOverride();
+                    let chosen = this.pendingBossKey;
+                    if (!chosen) {
+                        chosen = this.determineNextBossKey();
+                    }
+                    if (!chosen) {
+                        const bossTypes = this.getAvailableBossTypes();
+                        if (Array.isArray(bossTypes) && bossTypes.length > 0) {
+                            chosen = bossTypes[Math.floor(Math.random() * bossTypes.length)];
+                        }
+                    }
+                    if (!chosen) {
+                        chosen = firstBossKey || 'vector_snake_boss';
+                    }
+                    if (!this.usedBossTypes) this.usedBossTypes = new Set();
+                    this.usedBossTypes.add(chosen);
 
                   const clearPendingBoss = () => {
                       this.pendingBossKey = null;
