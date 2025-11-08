@@ -387,6 +387,126 @@
             height: 32px;
             display: block;
         }
+
+        .tutorial-button {
+            position: absolute;
+            top: 18px;
+            left: 20px;
+            width: 60px;
+            height: 60px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s ease;
+            z-index: 300;
+        }
+
+        .tutorial-button:focus {
+            outline: none;
+        }
+
+        .tutorial-button:hover,
+        .tutorial-button:focus-visible {
+            transform: scale(1.08);
+        }
+
+        .tutorial-button-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            color: #00e5ff;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            font-size: 20px;
+            letter-spacing: 1px;
+            background: rgba(0, 0, 0, 0.45);
+            box-shadow: 0 0 12px rgba(0, 229, 255, 0.45);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+        }
+
+        .tutorial-button:hover .tutorial-button-icon,
+        .tutorial-button:focus-visible .tutorial-button-icon {
+            background: rgba(0, 229, 255, 0.1);
+            box-shadow: 0 0 18px rgba(0, 229, 255, 0.65);
+        }
+
+        .tutorial-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.75);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 600;
+        }
+
+        .tutorial-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .tutorial-banner {
+            position: relative;
+            max-width: 640px;
+            width: calc(100% - 64px);
+            background: #000000;
+            border: 2px solid #00e5ff;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
+            padding: 40px 48px 36px;
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .tutorial-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid #00e5ff;
+            background: rgba(0, 229, 255, 0.08);
+            color: #00e5ff;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .tutorial-close:focus {
+            outline: none;
+        }
+
+        .tutorial-close:hover,
+        .tutorial-close:focus-visible {
+            transform: scale(1.08);
+            background: rgba(0, 229, 255, 0.18);
+            box-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
+        }
+
+        .tutorial-title {
+            margin: 0 0 24px;
+            font-size: 28px;
+            letter-spacing: 2px;
+            color: #ffffff;
+        }
+
+        .tutorial-description {
+            color: #00e5ff;
+            font-size: 16px;
+            line-height: 1.6;
+        }
         
         /* Quit Button in Pause Menu */
         .quit-button {
@@ -530,6 +650,9 @@
     
     <!-- Lobby Screen -->
     <div class="lobby" id="lobby">
+        <button class="tutorial-button" id="tutorialButton" title="How to Play" aria-haspopup="dialog" aria-controls="tutorialOverlay">
+            <span class="tutorial-button-icon">?</span>
+        </button>
         <div class="lobby-title" id="lobbyTitle">GEOMETRY RUSH</div>
         <img class="lobby-logo" id="lobbyLogo" src="game-logo.png" alt="GEOMETRY RUSH" />
         <button class="start-button" id="startButton" style="margin-top: 24px;">
@@ -567,6 +690,26 @@
     
     <!-- Quit Button for Pause Menu -->
     <div class="quit-button" id="quitButton" title="Return to Lobby">✕</div>
+
+    <!-- Tutorial Overlay -->
+    <div class="tutorial-overlay" id="tutorialOverlay" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="tutorial-banner">
+            <button class="tutorial-close" id="tutorialCloseButton" aria-label="Close Tutorial">✕</button>
+            <h2 class="tutorial-title">HOW TO PLAY</h2>
+            <div class="tutorial-description">
+                Kill enemies with weapons and collect green XP Orbs to Level Up and select various Upgrades. Each 3 waves you will encounter a random boss.<br><br>
+                Controls:<br>
+                [ W ] [ A ] [ S ] [ D ] - Move<br>
+                Mouse - Aiming<br>
+                [ Shift ]  - Dash<br><br>
+                Weapons:<br>
+                L. Mouse - Blaster Progectiles<br>
+                R. Mouse - Railgun (Hold to charge), Max charge can break shields<br>
+                M. Mouse - AOE Rockets<br>
+                Space - AOE Mines
+            </div>
+        </div>
+    </div>
 
     <div class="upgrade-overlay" id="upgradeOverlay">
         <div class="upgrade-wrapper">
@@ -5130,6 +5273,10 @@
                 this.input = new InputManager();
                 this.audio = new AudioManager();
                 this.uiManager = new UIManager();
+                this.tutorialOverlay = null;
+                this.isTutorialOpen = false;
+                this.openTutorial = () => {};
+                this.closeTutorial = () => {};
                 this.shootDelay = 250;
                 this.lastShot = 0;
                 this.rocketCooldownMs = 1500;
@@ -5447,6 +5594,9 @@
                 const themeOptions = themeSelector ? Array.from(themeSelector.querySelectorAll('.theme-option')) : [];
                 const themeCyanNameEl = document.getElementById('themeCyanName');
                 const themeRainbowNameEl = document.getElementById('themeRainbowName');
+                  const tutorialButton = document.getElementById('tutorialButton');
+                  const tutorialOverlay = document.getElementById('tutorialOverlay');
+                  const tutorialCloseButton = document.getElementById('tutorialCloseButton');
                 
                 // Handle logo loading
                 lobbyLogo.addEventListener('load', () => {
@@ -5596,6 +5746,59 @@
                 updateThemeLocksUI();
                 applyThemeSelectionUI();
                 
+                const openTutorial = () => {
+                    if (!tutorialOverlay) return;
+                    if (tutorialOverlay.classList.contains('visible')) return;
+                    tutorialOverlay.classList.add('visible');
+                    tutorialOverlay.setAttribute('aria-hidden', 'false');
+                    this.isTutorialOpen = true;
+                    this.tutorialOverlay = tutorialOverlay;
+                    if (tutorialCloseButton) {
+                        tutorialCloseButton.focus({ preventScroll: true });
+                    }
+                };
+                
+                const closeTutorial = ({ restoreFocus = true } = {}) => {
+                    if (!tutorialOverlay) return;
+                    if (!tutorialOverlay.classList.contains('visible')) {
+                        this.isTutorialOpen = false;
+                        return;
+                    }
+                    tutorialOverlay.classList.remove('visible');
+                    tutorialOverlay.setAttribute('aria-hidden', 'true');
+                    this.isTutorialOpen = false;
+                    if (restoreFocus && tutorialButton && this.inLobby) {
+                        tutorialButton.focus({ preventScroll: true });
+                    }
+                };
+                
+                this.openTutorial = openTutorial;
+                this.closeTutorial = closeTutorial;
+                this.tutorialOverlay = tutorialOverlay;
+                
+                if (tutorialButton) {
+                    tutorialButton.addEventListener('click', () => {
+                        if (!this.inLobby) return;
+                        this.audio.playSound('buttonClick');
+                        openTutorial();
+                    });
+                }
+                
+                if (tutorialCloseButton) {
+                    tutorialCloseButton.addEventListener('click', () => {
+                        this.audio.playSound('buttonClick');
+                        closeTutorial();
+                    });
+                }
+                
+                if (tutorialOverlay) {
+                    tutorialOverlay.addEventListener('click', (event) => {
+                        if (event.target === tutorialOverlay) {
+                            closeTutorial();
+                        }
+                    });
+                }
+                 
                 // Auto-start audio on any interaction (only while in lobby)
                 const initAudio = async () => {
                     if (this.audio.musicEnabled && this.inLobby) {
@@ -5777,6 +5980,9 @@
             }
             
             startGame() {
+                if (typeof this.closeTutorial === 'function') {
+                    this.closeTutorial({ restoreFocus: false });
+                }
                 this.inLobby = false;
                 document.getElementById('lobby').classList.add('hidden');
                 this.uiManager.showUI();
@@ -6002,6 +6208,12 @@
                     const code = e.code;
                     if (['Escape', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'].includes(code)) {
                         e.preventDefault();
+                    }
+                    if (code === 'Escape' && this.isTutorialOpen) {
+                        if (typeof this.closeTutorial === 'function') {
+                            this.closeTutorial();
+                        }
+                        return;
                     }
                     if (code === 'Escape' && this.input.preventSpam('pause', 200)) {
                         if (this.gameOver) {
