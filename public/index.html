@@ -514,29 +514,35 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, 100px);
-            width: 50px;
-            height: 50px;
-            background: rgba(255, 0, 0, 0.1);
-            border: 2px solid #ff0000;
-            border-radius: 10px;
+            padding: 12px 70px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #ffffff;
+            background: transparent;
+            border: 3px solid #00ffff;
+            border-radius: 0;
             cursor: pointer;
             display: none;
-            justify-content: center;
             align-items: center;
-            font-size: 24px;
-            color: #ff0000;
+            justify-content: center;
+            text-transform: uppercase;
+            letter-spacing: 2px;
             transition: all 0.3s ease;
             z-index: 400;
         }
         
-        .quit-button:hover {
-            background: rgba(255, 0, 0, 0.3);
-            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
-            transform: translate(-50%, 100px) scale(1.1);
+        .quit-button:hover,
+        .quit-button:focus-visible {
+            color: #00ffff;
+            border-color: #ffffff;
+        }
+        
+        .quit-button:active {
+            transform: translate(-50%, 100px) scale(0.98);
         }
         
         .quit-button.visible {
-            display: flex;
+            display: inline-flex;
         }
         
         /* Upgrade Selection Overlay */
@@ -689,7 +695,7 @@
     </div>
     
     <!-- Quit Button for Pause Menu -->
-    <div class="quit-button" id="quitButton" title="Return to Lobby">✕</div>
+    <button type="button" class="quit-button" id="quitButton" title="Return to Lobby">Back to Lobby</button>
 
     <!-- Tutorial Overlay -->
     <div class="tutorial-overlay" id="tutorialOverlay" role="dialog" aria-modal="true" aria-hidden="true">
