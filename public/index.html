@@ -3014,6 +3014,10 @@
                             const ty = this.y + Math.sin(angle) * distance;
                             const e = new Enemy(tx, ty, 'triangle', ENEMY_TYPES['triangle']);
                             e.spawnShieldUntil = now + 800;
+                            e.spawnedByBossType = this.type;
+                            if (this.type === 'rhombus_boss') {
+                                e.spawnedByRhombusBoss = true;
+                            }
                             if (typeof window !== 'undefined' && window.game) window.game.enemies.push(e);
                         }
                         if (audio) audio.playSound('MinionSummon');
@@ -6192,11 +6196,12 @@
                 this.enemies.push(new Enemy(x, y, type, ENEMY_TYPES[type]));
             }
 
-            spawnTrianglesAround(cx, cy) {
+            spawnTrianglesAround(cx, cy, sourceEnemy = null) {
                 const count = 3;
                 const minRadius = 70;
                 const extraRadius = 40; // spawn a bit further out for spacing
                 const now = Date.now();
+                const fromRhombusBoss = !!(sourceEnemy && (sourceEnemy.spawnedByRhombusBoss || sourceEnemy.type === 'rhombus_boss'));
                 for (let i = 0; i < count; i++) {
                     const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4; // slight randomization
                     const distance = minRadius + extraRadius + Math.random() * 30;
@@ -6204,9 +6209,32 @@
                     const y = cy + Math.sin(angle) * distance;
                     const enemy = new Enemy(x, y, 'triangle', ENEMY_TYPES['triangle']);
                     enemy.spawnShieldUntil = now + 1000;
+                    if (fromRhombusBoss) {
+                        enemy.spawnedByRhombusBoss = true;
+                        enemy.spawnedByBossType = 'rhombus_boss';
+                    }
                     this.enemies.push(enemy);
                 }
                 if (this.audio) this.audio.playSound('MinionSummon');
+            }
+
+            shouldSuppressXpDropForEnemy(enemy) {
+                if (!enemy) return false;
+                if (!(this.inBossPhase && this.activeBoss && this.activeBoss.type === 'rhombus_boss')) {
+                    return false;
+                }
+                return !!enemy.spawnedByRhombusBoss;
+            }
+
+            maybeSpawnXpReward(enemy) {
+                if (!enemy || !this.effects || typeof this.effects.createXPRing !== 'function') return;
+                const config = ENEMY_TYPES[enemy.type] || {};
+                const xp = config.xp || 0;
+                if (xp <= 0) return;
+                if (this.shouldSuppressXpDropForEnemy(enemy)) return;
+                const baseRadius = (typeof enemy.radius === 'number') ? enemy.radius : 0;
+                const size = Math.max(8, baseRadius * 0.25);
+                this.effects.createXPRing(enemy.x, enemy.y, size, xp);
             }
 
             startWave(waveConfig) {
@@ -6368,7 +6396,7 @@
                                         impactY: r.y
                                     })) {
                                         this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                        { const config = ENEMY_TYPES[enemy.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(enemy.x, enemy.y, Math.max(8, enemy.radius * 0.25), xp); }
+                                        this.maybeSpawnXpReward(enemy);
                                         if (enemy.type === 'rhombus') {
                                             // special rhombus death handled elsewhere if needed
                                         }
@@ -6433,7 +6461,7 @@
                                         impactY: m.y
                                     })) {
                                         this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                        { const config = ENEMY_TYPES[enemy.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(enemy.x, enemy.y, Math.max(8, enemy.radius * 0.25), xp); }
+                                        this.maybeSpawnXpReward(enemy);
                                         if (enemy.type === 'rhombus') {
                                             // special rhombus death handled elsewhere if needed
                                         }
@@ -6512,9 +6540,9 @@
                                         impactY: ey
                                     })) {
                                         this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                        { const config = ENEMY_TYPES[en.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(en.x, en.y, Math.max(8, en.radius * 0.25), xp); }
+                                        this.maybeSpawnXpReward(en);
                                         if (en.type === 'rhombus') {
-                                            this.spawnTrianglesAround(en.x, en.y);
+                                            this.spawnTrianglesAround(en.x, en.y, en);
                                         }
                                         // swap-remove enemy
                                         const last = this.enemies.length - 1;
@@ -6584,10 +6612,10 @@
                                               impactX: ex,
                                               impactY: ey
                                           })) {
-                                              this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                              { const config = ENEMY_TYPES[en.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(en.x, en.y, Math.max(8, en.radius * 0.25), xp); }
+                                            this.effects.createExplosion(en.x, en.y, en.type, en.radius);
+                                            this.maybeSpawnXpReward(en);
                                               if (en.type === 'rhombus') {
-                                                  this.spawnTrianglesAround(en.x, en.y);
+                                                this.spawnTrianglesAround(en.x, en.y, en);
                                               }
                                               const last = this.enemies.length - 1;
                                               this.enemies[ej] = this.enemies[last];
@@ -6643,9 +6671,9 @@
                                         impactY: ey
                                     })) {
                                         this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                        { const config = ENEMY_TYPES[en.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(en.x, en.y, Math.max(8, en.radius * 0.25), xp); }
+                                        this.maybeSpawnXpReward(en);
                                         if (en.type === 'rhombus') {
-                                            this.spawnTrianglesAround(en.x, en.y);
+                                            this.spawnTrianglesAround(en.x, en.y, en);
                                         }
                                         // swap-remove enemy
                                         const last = this.enemies.length - 1;
@@ -6694,16 +6722,16 @@
                                       const ddy = en.y - ey;
                                       if (ddx * ddx + ddy * ddy <= aoe * aoe) {
                                           if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
-                                          if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
-                                              damageType: 'mine',
-                                              impactX: ex,
-                                              impactY: ey
-                                          })) {
-                                              this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                              { const config = ENEMY_TYPES[en.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(en.x, en.y, Math.max(8, en.radius * 0.25), xp); }
-                                              if (en.type === 'rhombus') {
-                                                  this.spawnTrianglesAround(en.x, en.y);
-                                              }
+                                        if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
+                                            damageType: 'mine',
+                                            impactX: ex,
+                                            impactY: ey
+                                        })) {
+                                            this.effects.createExplosion(en.x, en.y, en.type, en.radius);
+                                            this.maybeSpawnXpReward(en);
+                                            if (en.type === 'rhombus') {
+                                                this.spawnTrianglesAround(en.x, en.y, en);
+                                            }
                                               const last = this.enemies.length - 1;
                                               this.enemies[ej] = this.enemies[last];
                                               this.enemies.pop();
@@ -6743,9 +6771,9 @@
 							this.player.takeDamage(enemy.damage, (this.player.x + enemy.x) / 2, (this.player.y + enemy.y) / 2, this.effects, this.audio);
 						} else {
 							this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-							{ const config = ENEMY_TYPES[enemy.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(enemy.x, enemy.y, Math.max(8, enemy.radius * 0.25), xp); }
+							this.maybeSpawnXpReward(enemy);
 							if (enemy.type === 'rhombus') {
-								this.spawnTrianglesAround(enemy.x, enemy.y);
+								this.spawnTrianglesAround(enemy.x, enemy.y, enemy);
 							}
 							this.player.takeDamage(enemy.damage, (this.player.x + enemy.x) / 2, (this.player.y + enemy.y) / 2, this.effects, this.audio);
 							// swap-remove enemy
@@ -6779,9 +6807,9 @@
                                     impactY: bullet.y
                                 })) {
                                     this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                    { const config = ENEMY_TYPES[enemy.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(enemy.x, enemy.y, Math.max(8, enemy.radius * 0.25), xp); }
+                                    this.maybeSpawnXpReward(enemy);
                                     if (enemy.type === 'rhombus') {
-                                        this.spawnTrianglesAround(enemy.x, enemy.y);
+                                        this.spawnTrianglesAround(enemy.x, enemy.y, enemy);
                                     }
                                     // swap-remove enemy
                                     const last = this.enemies.length - 1;
@@ -6814,9 +6842,9 @@
                                     ignoreShield: !!effect._isMaxCharge
                                 })) {
                                     this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                    { const config = ENEMY_TYPES[enemy.type] || {}; const xp = config.xp || 0; if (xp > 0) this.effects.createXPRing(enemy.x, enemy.y, Math.max(8, enemy.radius * 0.25), xp); }
+                                    this.maybeSpawnXpReward(enemy);
                                     if (enemy.type === 'rhombus') {
-                                        this.spawnTrianglesAround(enemy.x, enemy.y);
+                                        this.spawnTrianglesAround(enemy.x, enemy.y, enemy);
                                     }
                                     // swap-remove enemy
                                     const last = this.enemies.length - 1;
