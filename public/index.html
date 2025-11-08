@@ -2719,7 +2719,34 @@
                     maxLife: 360,
                     pulse: 0,
                     fadeOut: 0,
-                    typeSpecificUpdate: function() {
+                    magnetRadius: 100,
+                    minMagnetSpeed: 2,
+                    maxMagnetSpeed: 12,
+                    typeSpecificUpdate: function(playerX, playerY) {
+                        const magnetRange = this.magnetRadius || 0;
+                        if (typeof playerX === 'number' && typeof playerY === 'number' && magnetRange > 0) {
+                            const dx = playerX - this.x;
+                            const dy = playerY - this.y;
+                            const dist = Math.hypot(dx, dy);
+                            if (dist <= magnetRange) {
+                                const closeness = 1 - Math.min(dist / magnetRange, 1);
+                                const minSpeed = this.minMagnetSpeed ?? 2;
+                                const maxSpeed = this.maxMagnetSpeed ?? 10;
+                                const speed = (minSpeed + (maxSpeed - minSpeed) * closeness) * (this.speedMultiplier || 1) * getMotionScale();
+                                if (dist > 0.0001) {
+                                    const step = speed / dist;
+                                    this.x += dx * step;
+                                    this.y += dy * step;
+                                    if (dist <= speed) {
+                                        this.x = playerX;
+                                        this.y = playerY;
+                                    }
+                                } else {
+                                    this.x = playerX;
+                                    this.y = playerY;
+                                }
+                            }
+                        }
                         if (this.life > 0) {
                             this.life--;
                         }
