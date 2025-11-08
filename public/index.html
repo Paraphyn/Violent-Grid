@@ -5551,8 +5551,8 @@
                         const unlocked = isThemeUnlocked(t);
                         if (!unlocked) opt.classList.add('locked'); else opt.classList.remove('locked');
                     });
-                    if (themeCyanNameEl) themeCyanNameEl.textContent = isThemeUnlocked('cyan') ? 'Glow' : '1000 Pts.';
-                    if (themeRainbowNameEl) themeRainbowNameEl.textContent = isThemeUnlocked('rainbow') ? 'Rainbow' : '2500 Pts.';
+                    if (themeCyanNameEl) themeCyanNameEl.textContent = isThemeUnlocked('cyan') ? 'Glow' : '1500 Pts.';
+                    if (themeRainbowNameEl) themeRainbowNameEl.textContent = isThemeUnlocked('rainbow') ? 'Rainbow' : '3500 Pts.';
                 };
                 // Ensure currently selected theme is valid; fallback if locked
                 if (!isThemeUnlocked(this.playerTheme)) {
