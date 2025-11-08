@@ -3472,11 +3472,23 @@
                 this.shootCooldownMs = 1100;
                 this.recentDamage = 0;
                 this.recentDamageFade = 0;
+                const superShield = ENEMY_TYPES['super_octagon'] || {};
+                this.shieldColor = superShield.shieldColor || 'rgba(255, 160, 0, 0.18)';
+                this.shieldLineColor = superShield.shieldLineColor || 'rgba(255, 210, 0, 0.85)';
+                this.glowColor = superShield.glowColor || 'rgba(255, 32, 0, 0.65)';
+                const baseOffset = superShield.shieldRadiusOffset != null ? superShield.shieldRadiusOffset : 24;
+                this.shieldBaseRadius = Math.max(this.width, this.height) / 2 + baseOffset;
+                this.shieldPulse = 0;
+                this.glowPulse = 0;
             }
 
             update() {
                 const t = getTimeScale();
                 const motion = getMotionScale();
+                const shieldStep = 0.08 * t;
+                const glowStep = 0.05 * t;
+                this.shieldPulse = (this.shieldPulse + shieldStep) % (Math.PI * 2);
+                this.glowPulse = (this.glowPulse + glowStep) % (Math.PI * 2);
                 // Horizontal movement with inertia
                 const desired = this.targetVx * motion;
                 this.vx += (desired - this.vx) * Math.min(1, this.inertia * t);
@@ -3576,8 +3588,30 @@
             }
 
             draw(ctx) {
-                // Draw cross: vertical and horizontal bars made of squares (batch, no blur)
+                const shieldPulsePhase = this.shieldPulse || 0;
+                const baseRadius = this.shieldBaseRadius || 63;
+                const pulseScale = 1 + 0.035 * Math.sin(shieldPulsePhase * 1.5);
+                const shieldRadius = baseRadius * pulseScale;
+                const glowPulsePhase = this.glowPulse || 0;
                 ctx.save();
+                ctx.save();
+                const glowIntensity = 0.35 + 0.25 * Math.sin(glowPulsePhase * 1.2);
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.fillStyle = this.glowColor || 'rgba(255, 32, 0, 0.65)';
+                ctx.globalAlpha = Math.max(0, Math.min(1, glowIntensity));
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, shieldRadius * 0.85, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+                ctx.save();
+                const pulseAlpha = 0.45 + 0.18 * Math.sin(shieldPulsePhase * 2);
+                const damageBoost = this.damageFlash > 0 ? 0.25 : 0;
+                ctx.globalAlpha = Math.max(0, Math.min(1, pulseAlpha + damageBoost));
+                ctx.fillStyle = this.shieldColor || 'rgba(255, 160, 0, 0.6)';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, shieldRadius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
                 const s = 18; // square size
                 const halfW = Math.floor(this.width / s / 2) * s;
                 const halfH = Math.floor(this.height / s / 2) * s;
@@ -3595,13 +3629,15 @@
                 }
                 ctx.fill();
                 ctx.stroke();
-                // Shield aura (only penetrable by full railgun)
+                ctx.save();
+                const outlineAlpha = 0.55 + 0.15 * Math.sin(shieldPulsePhase * 2.5) + (this.damageFlash > 0 ? 0.2 : 0);
+                ctx.globalAlpha = Math.max(0, Math.min(1, outlineAlpha));
+                ctx.strokeStyle = this.shieldLineColor || 'rgba(255, 210, 0, 0.85)';
+                ctx.lineWidth = 3;
                 ctx.beginPath();
-                ctx.strokeStyle = 'rgba(255,140,0,0.9)';
-                ctx.lineWidth = 4;
-                ctx.arc(this.x, this.y, 63, 0, Math.PI * 2);
+                ctx.arc(this.x, this.y, shieldRadius, 0, Math.PI * 2);
                 ctx.stroke();
-                // HP bar with recent damage overlay
+                ctx.restore();
                 const w = 120, h = 6;
                 ctx.fillStyle = 'rgba(100, 0, 0, 0.7)';
                 ctx.fillRect(this.x - w/2, this.y - 74, w, h);
