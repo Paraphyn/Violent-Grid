@@ -6215,6 +6215,13 @@
                     if (['Escape', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'].includes(code)) {
                         e.preventDefault();
                     }
+                    if (code === 'Space' && this.inLobby) {
+                        if (this.input.preventSpam('startGame', 200)) {
+                            this.audio.playSound('buttonClick');
+                            this.startGame();
+                        }
+                        return;
+                    }
                     if (code === 'Escape' && this.isTutorialOpen) {
                         if (typeof this.closeTutorial === 'function') {
                             this.closeTutorial();
