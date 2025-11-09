@@ -6239,41 +6239,21 @@
                             this.returnToLobby();
                         } else if (!this.inLobby) {
                             // ESC in game toggles pause
-                            this.paused = !this.paused;
-                            const quitButton = document.getElementById('quitButton');
-                            if (this.paused) {
-                                this.pauseTime = Date.now();
-                                this.input.clear();
-                                this.audio.pauseMusic();
-                                this.player.stopRailgunCharge(this.audio);
-                                this.audio.playSound('pauseActivate');
-                                if (this.effects && this.effects.disableRailgunAura) this.effects.disableRailgunAura();
-                                quitButton.classList.add('visible');
-                                if (this.uiManager && this.uiManager.showControlsInfo) {
-                                    this.uiManager.showControlsInfo();
-                                }
+                            const shouldPause = !this.paused;
+                            this.paused = shouldPause;
+                            if (shouldPause) {
+                                this.enterPause();
                             } else {
-                                const pauseDelta = Date.now() - this.pauseTime;
-                                this.startTime += pauseDelta;
-                                this.waveStartTime += pauseDelta;
-                                if (this.initialSpawnDelayUntil) {
-                                    this.initialSpawnDelayUntil += pauseDelta;
-                                }
-                                if (this.inBossPhase && this.bossTimerPauseStart) {
-                                    this.bossTimerPauseStart += pauseDelta;
-                                }
-                                this.audio.resumeMusic();
-                                this.audio.playSound('pauseDeactivate');
-                                quitButton.classList.remove('visible');
-                                if (this.uiManager && this.uiManager.hideControlsInfo) {
-                                    const elapsed = this.getEffectiveElapsedTime();
-                                    if (this.controlsInfoAutoHideTriggered || elapsed >= this.controlsInfoAutoHideDelay) {
-                                        this.uiManager.hideControlsInfo();
-                                        this.controlsInfoAutoHideTriggered = true;
-                                    }
-                                }
+                                this.exitPause();
                             }
                         }
+                    }
+                    if (code === 'Space' && this.paused && !this.gameOver && !this.inLobby) {
+                        if (this.input.preventSpam('pause', 200)) {
+                            this.paused = false;
+                            this.exitPause();
+                        }
+                        return;
                     }
                     if (code === 'Space' && this.input.preventSpam('restart', 100)) {
                         if (this.gameOver) {
@@ -6364,6 +6344,49 @@
 
                 window.addEventListener('blur', () => this.input.clear());
                 window.addEventListener('focus', () => this.input.clear());
+            }
+
+            enterPause() {
+                const quitButton = document.getElementById('quitButton');
+                this.pauseTime = Date.now();
+                this.input.clear();
+                this.audio.pauseMusic();
+                this.player.stopRailgunCharge(this.audio);
+                this.audio.playSound('pauseActivate');
+                if (this.effects && this.effects.disableRailgunAura) {
+                    this.effects.disableRailgunAura();
+                }
+                if (quitButton) {
+                    quitButton.classList.add('visible');
+                }
+                if (this.uiManager && this.uiManager.showControlsInfo) {
+                    this.uiManager.showControlsInfo();
+                }
+            }
+
+            exitPause() {
+                const pauseDelta = Date.now() - this.pauseTime;
+                this.startTime += pauseDelta;
+                this.waveStartTime += pauseDelta;
+                if (this.initialSpawnDelayUntil) {
+                    this.initialSpawnDelayUntil += pauseDelta;
+                }
+                if (this.inBossPhase && this.bossTimerPauseStart) {
+                    this.bossTimerPauseStart += pauseDelta;
+                }
+                this.audio.resumeMusic();
+                this.audio.playSound('pauseDeactivate');
+                const quitButton = document.getElementById('quitButton');
+                if (quitButton) {
+                    quitButton.classList.remove('visible');
+                }
+                if (this.uiManager && this.uiManager.hideControlsInfo) {
+                    const elapsed = this.getEffectiveElapsedTime();
+                    if (this.controlsInfoAutoHideTriggered || elapsed >= this.controlsInfoAutoHideDelay) {
+                        this.uiManager.hideControlsInfo();
+                        this.controlsInfoAutoHideTriggered = true;
+                    }
+                }
             }
 
             placeMine() {
