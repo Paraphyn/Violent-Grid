@@ -533,7 +533,7 @@
             text-transform: uppercase;
             letter-spacing: 2px;
             transition: all 0.3s ease;
-            z-index: 400;
+            z-index: 550;
         }
         
         .quit-button:hover,
@@ -6371,29 +6371,46 @@
                 }
             }
 
-            exitPause() {
-                const pauseDelta = Date.now() - this.pauseTime;
-                this.startTime += pauseDelta;
-                this.waveStartTime += pauseDelta;
-                if (this.initialSpawnDelayUntil) {
+            exitPause(options = {}) {
+                const { playSound = true } = options;
+                const now = Date.now();
+                const pauseStart = Number.isFinite(this.pauseTime) && this.pauseTime > 0 ? this.pauseTime : now;
+                const pauseDelta = now - pauseStart;
+                
+                if (Number.isFinite(this.startTime)) {
+                    this.startTime += pauseDelta;
+                }
+                if (Number.isFinite(this.waveStartTime)) {
+                    this.waveStartTime += pauseDelta;
+                }
+                if (Number.isFinite(this.initialSpawnDelayUntil)) {
                     this.initialSpawnDelayUntil += pauseDelta;
                 }
-                if (this.inBossPhase && this.bossTimerPauseStart) {
+                if (this.inBossPhase && Number.isFinite(this.bossTimerPauseStart) && this.bossTimerPauseStart > 0) {
                     this.bossTimerPauseStart += pauseDelta;
                 }
-                this.audio.resumeMusic();
-                this.audio.playSound('pauseDeactivate');
+                
+                if (this.audio && typeof this.audio.resumeMusic === 'function') {
+                    this.audio.resumeMusic();
+                    if (playSound && typeof this.audio.playSound === 'function') {
+                        this.audio.playSound('pauseDeactivate');
+                    }
+                }
+                
                 const quitButton = document.getElementById('quitButton');
                 if (quitButton) {
                     quitButton.classList.remove('visible');
                 }
-                if (this.uiManager && this.uiManager.hideControlsInfo) {
+                
+                if (this.uiManager && typeof this.uiManager.hideControlsInfo === 'function') {
                     const elapsed = this.getEffectiveElapsedTime();
                     if (this.controlsInfoAutoHideTriggered || elapsed >= this.controlsInfoAutoHideDelay) {
                         this.uiManager.hideControlsInfo();
                         this.controlsInfoAutoHideTriggered = true;
                     }
                 }
+                
+                this.pauseTime = 0;
             }
 
             placeMine() {
@@ -7729,17 +7746,21 @@
 
             resumeAfterUpgrade() {
                 this.upgradePause = false;
-                this.paused = false;
-                const pauseDelta = Date.now() - this.pauseTime;
-                this.startTime += pauseDelta;
-                this.waveStartTime += pauseDelta;
-                if (this.initialSpawnDelayUntil) {
-                    this.initialSpawnDelayUntil += pauseDelta;
+                if (this.paused) {
+                    this.paused = false;
                 }
-                if (this.inBossPhase && this.bossTimerPauseStart) {
-                    this.bossTimerPauseStart += pauseDelta;
+                if (typeof this.exitPause === 'function') {
+                    this.exitPause({ playSound: false });
+                } else {
+                    if (this.audio && typeof this.audio.resumeMusic === 'function') {
+                        this.audio.resumeMusic();
+                    }
+                    const quitButton = document.getElementById('quitButton');
+                    if (quitButton) {
+                        quitButton.classList.remove('visible');
+                    }
+                    this.pauseTime = 0;
                 }
-                this.audio.resumeMusic();
             }
 
             triggerLevelUpSelection() {
