@@ -1,0 +1,242 @@
+// Enemy configuration
+const ENEMY_TYPES = {
+    square: {
+        role: 'regular',
+        health: 200,
+        speed: 3.5,
+        size: 30,
+        points: 5,
+        damage: 10,
+        xp: 10,
+        fillColor: '#ff0000',
+        strokeColor: '#cc0000'
+    },
+    dash_square: {
+        role: 'regular',
+        health: 300,
+        speed: 3.5,
+        size: 35,
+        points: 15,
+        damage: 15,
+        xp: 15,
+        fillColor: '#ff0000',
+        strokeColor: '#cc0000',
+        dashCooldownMs: 1500,
+        dashDistance: 200,
+        dashDurationMs: 180,
+        displayName: 'DashSquare'
+    },
+    triangle: {
+        role: 'regular',
+        health: 45,
+        speed: 5.5,
+        size: 15,
+        points: 10,
+        damage: 10,
+        xp: 15,
+        fillColor: '#ff6666',
+        strokeColor: '#cc3333'
+    },
+    octagon: {
+        role: 'regular',
+        health: 700,
+        speed: 2,
+        size: 50,
+        points: 15,
+        damage: 20,
+        xp: 30,
+        fillColor: '#990000',
+        strokeColor: '#660000',
+        shootDelay: 4000
+    },
+    super_octagon: {
+        role: 'regular',
+        health: 1200,
+        speed: 1.5,
+        size: 80,
+        points: 150,
+        damage: 20,
+        xp: 50,
+        fillColor: '#ff6a00',
+        strokeColor: '#cc3300',
+        shootDelay: 1333,
+        shieldRadiusOffset: 24,
+        shieldColor: 'rgba(255, 160, 0, 0.18)',
+        shieldLineColor: 'rgba(255, 210, 0, 0.85)',
+        glowColor: 'rgba(255, 32, 0, 0.65)',
+        bulletTrailColor: '#ff9448',
+        bulletTrailLifeMultiplier: 1.8,
+        bulletTrailSizeMultiplier: 1.2,
+        enemyBulletRadius: 7,
+        enemyBulletFillColor: '#ff6a00',
+        enemyBulletStrokeColor: '#ff3200',
+        enemyBulletGlowColor: 'rgba(255, 96, 0, 0.75)',
+        enemyBulletDamage: 18,
+        enemyBulletSpeed: 9,
+        displayName: 'Super Octagon'
+    },
+    rhombus: {
+        role: 'regular',
+        health: 500,
+        speed: 3.2,
+        size: 45,
+        points: 30,
+        damage: 15,
+        xp: 25,
+        fillColor: '#ff9999',
+        strokeColor: '#ff6666'
+    },
+    rhombus_boss: {
+        role: 'boss',
+        health: 3500,
+        speed: 2,
+        size: 45 * 3,
+        points: 950,
+        damage: 500,
+        xp: 100,
+        fillColor: '#ff5555',
+        strokeColor: '#dd0000',
+        isBoss: true,
+        bossBaseType: 'rhombus',
+        bossTriangleSpawnIntervalMs: 2700
+    }
+};
+
+ENEMY_TYPES['vector_snake_boss'] = {
+    role: 'boss',
+    health: 4500, // Head health; custom boss logic handles per-segment health
+    speed: 0,
+    size: 78,
+    points: 950,
+    damage: 100,
+    xp: 0,
+    fillColor: '#33ffdd',
+    strokeColor: '#33ffdd',
+    isBoss: true,
+    bossBaseType: 'vector_snake'
+};
+
+// Boss: Tetris Cross (cross made of squares)
+// Declared as a boss type so it appears in the boss pool, but it has a custom class/behavior elsewhere
+ENEMY_TYPES['tetris_cross_boss'] = {
+    role: 'boss',
+    health: 4500,
+    speed: 0, // handled by custom boss class
+    size: 60, // collision radius approximation
+    points: 950,
+    damage: 0,
+    xp: 0,
+    fillColor: '#ff3333',
+    strokeColor: '#ff3333',
+    isBoss: true,
+    bossBaseType: 'tetris_cross'
+};
+
+// Vector Snake boss config
+const VECTOR_SNAKE_SETTINGS = Object.freeze({
+    headHp: 5000,
+    segmentHp: 700,
+    headRadius: 29,
+    headSize: 58,
+    segmentRadius: 29,
+    segmentSize: 58,
+    segmentSpacing: 58,
+    movementSpeed: 4,
+    gridSize: 58,
+    turnIntervalMs: 1200,
+    turnIntervalVarianceMs: 500,
+    margin: 0,
+    edgePadding: 34,
+    edgeTolerance: 4,
+    ignoreBossSafeZone: true,
+    headCollisionDamage: 100,
+    segmentCollisionDamage: 25,
+    playerStalkDistance: 140,
+    directionRandomnessChance: 0.35,
+    playerChaseJitterDistance: 90,
+    playerChaseJitterMinDistance: 30,
+    playerChaseJitterIntervalMs: 900,
+    appleRadius: 20,
+    appleHp: 1000,
+    appleLifetimeMs: 12000,
+    appleSpawnIntervalMs: 4000,
+    appleSpawnIntervalVarianceMs: 500,
+    appleSpawnReductionIntervalMs: 6000,
+    appleSpawnReductionPercent: 0.03,
+    appleMinSpawnIntervalMs: 2000,
+    appleSpawnRampDurationMs: 90000,
+    growthPerApple: 3,
+    maxApples: 5,
+    speedIncreaseIntervalMs: 5000,
+    speedIncreasePercent: 0.02,
+    appleShootIntervalMs: 500,
+    appleBulletSpeed: 5,
+    appleBulletDamage: 25,
+    appleBlastRadius: 100,
+    appleBlastDamage: 25,
+    appleSpawnNearPlayerMinDistance: 80,
+    appleSpawnNearPlayerMaxDistance: 200
+});
+
+const BOSS_SELECTION = Object.freeze({
+    firstBossKey: null
+});
+
+const BOSS_NAME_MAP = Object.freeze({
+    vector_snake_boss: 'VECTOR SNAKE',
+    tetris_cross_boss: 'TETRIS+',
+    rhombus_boss: 'RHOMBOSS'
+});
+
+// Tetris Cross boss config
+const TETRIS_SETTINGS = {
+    // Toggle: force Tetris Cross as the first boss with 100% spawn chance
+    forceFirstBoss: false,
+    // Playfield
+    cols: 36,
+    cellSize: null, // computed from canvas width
+    // Piece/boss stats
+    pieceHp: 250,
+    bossHp: 2500,
+    playerCollisionDamage: 25,
+    // Spawning & speeds
+    spawnIntervalMs: 1200,
+    minSpawnIntervalMs: 650,
+    spawnAccelerationMsPerSec: 4, // decreases interval slowly
+    fallSpeedPxPerSec: 40,
+    enrageSpeedPxPerSec2: 5 // adds per second
+};
+
+const INITIAL_ENEMY_SPAWN_DELAY_MS = 2500;
+
+// Option: use grouped wave randomization (set to true to enable)
+const USE_WAVE_GROUPS = true;
+
+// Wave groups: each inner array is a group; order across groups is fixed (1, 2, 3, ...)
+// Waves inside a group are randomly ordered each session
+const WAVE_GROUPS = [
+    // Group 1 (example: original waves 1-3)
+    [
+        { enemies: { cubes: 8, triangles: 0, octagons: 0, rhombuses: 0 }, spawnTime: 10000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 0, triangles: 0, octagons: 4, rhombuses: 0 }, spawnTime: 10000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 0, triangles: 10, octagons: 0, rhombuses: 0 }, spawnTime: 10000, simultaneousSpawns: 1 }
+    ],
+    // Group 2 (example: original waves 4-6)
+    [
+        { enemies: { cubes: 10, dashSquares: 0, triangles: 0, octagons: 0, rhombuses: 3 }, spawnTime: 10000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 0, triangles: 10, octagons: 6, rhombuses: 0, superOctagons: 1 }, spawnTime: 15000, simultaneousSpawns: 1 },
+        { enemies: { dashSquares: 10, triangles: 0, octagons: 0, rhombuses: 0 }, spawnTime: 15000, simultaneousSpawns: 1 }
+    ],
+    // Group 3 (example: original waves 7-9)
+    [
+        { enemies: { cubes: 5, dashSquares: 5, triangles: 0, octagons: 5, rhombuses: 3 }, spawnTime: 15000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 0, triangles: 12, octagons: 0, rhombuses: 8 }, spawnTime: 25000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 0, triangles: 0, octagons: 20, rhombuses: 0, superOctagons: 1 }, spawnTime: 25000, simultaneousSpawns: 1 }
+    ],
+    // Group 4 (example: original waves 10-12)
+    [
+        { enemies: { cubes: 25, dashSquares: 0, triangles: 25, octagons: 0, rhombuses: 0 }, spawnTime: 22000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 0, dashSquares: 20, triangles: 10, octagons: 0, rhombuses: 0, superOctagons: 1 }, spawnTime: 15000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 30, triangles: 0, octagons: 0, rhombuses: 0, superOctagons: 3 }, spawnTime: 15000, simultaneousSpawns: 1 }
+    ]
+];
