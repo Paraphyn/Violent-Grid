@@ -731,6 +731,7 @@
     </div>
     <script src="enemies.js"></script>
     <script src="player-config.js"></script>
+    <script src="sound-controller.js"></script>
 
     <script>
         // Global speed && scaling settings
@@ -920,53 +921,46 @@
 
         // Audio Manager
         class AudioManager {
-            constructor() {
+            constructor(config) {
+                const globalConfig = (typeof window !== 'undefined' && window.SOUND_CONTROLLER) ? window.SOUND_CONTROLLER : {};
+                this.config = (config && typeof config === 'object') ? config : globalConfig;
+                const settings = (this.config && typeof this.config.settings === 'object') ? this.config.settings : {};
+                this.settings = {
+                    defaultVolume: settings.defaultVolume ?? 0.7,
+                    musicVolume: settings.musicVolume ?? 0.4,
+                    concurrencyWindowMs: settings.concurrencyWindowMs ?? 250,
+                    maxVoices: { default: 8, ...(settings.maxVoices || {}) }
+                };
                 this.audios = {};
                 this.initialized = false;
-                this.volume = 0.7;
-                this.musicVolume = 0.4;
+                this.volume = this.settings.defaultVolume;
+                this.musicVolume = this.settings.musicVolume;
                 this.loadingPromises = [];
                 this.musicEnabled = true;
             }
 
             async initialize() {
                 if (this.initialized) return;
-                const basePath = 'Sounds/';
-                const audioFiles = {
-                    lobbyMusic: { file: 'lobby-music.mp3', loop: true, isMusic: true },
-                    backgroundMusic: { file: 'background-music.mp3', loop: true, isMusic: true },
-					buttonClick: { file: 'button-click.wav', loop: false },
-					pauseActivate: { file: 'pause-activate.wav', loop: false },
-                    pauseDeactivate: { file: 'pause-deactivate.wav', loop: false },
-					dash: { file: 'dash.wav', loop: false },
-					XP_collect: { file: 'xp-collect.wav', loop: false },
-					'Level_UP': { file: 'level-up.wav', loop: false },
-					UpgradeSelected: { file: 'level-up.wav', loop: false },
-					BossAlertSound: { file: 'boss-alert.wav', loop: true },
-					playerDamage: { file: 'player-damage.wav', loop: false },  
-					bulletShoot: { file: 'bullet-shoot.wav', loop: false },
-                    railgunShoot: { file: 'railgun-shoot.wav', loop: false },
-                    MaxRailgunShot: { file: 'max-railgun-shot.wav', loop: false },
-                    railgunCharge: { file: 'railgun-charge.wav', loop: true },
-                    railgunChargeMax: { file: 'railgun-charge-max.wav', loop: false },
-                    RocketLaunch: { file: 'rocket-launch.wav', loop: false },
-                    RocketExplotion: { file: 'rocket-explosion.wav', loop: false },
-                    RocketReload: { file: 'rocket-reload.wav', loop: false },
-					mine_placed: { file: 'mine-placed.wav', loop: false },
-                    enemyHit: { file: 'enemy-hit.wav', loop: false },
-					enemyShoot: { file: 'enemy-shoot.wav', loop: false },
-					enemyDeath: { file: 'enemy-death.wav', loop: false }, 
-                    boss_hit: { file: 'boss-hit.wav', loop: false },
-					SnakeEatsApple: { file: 'snake-eats-apple.wav', loop: false },
-                    bossDefeated: { file: 'boss-killed.wav', loop: false },					
-					gameOver: { file: 'game-over.wav', loop: false }
-                };
+                const basePath = typeof this.config.basePath === 'string' ? this.config.basePath : 'Sounds/';
+                const audioFiles = (this.config && typeof this.config.files === 'object') ? this.config.files : {};
+                const entries = Object.entries(audioFiles);
+                if (entries.length === 0) {
+                    console.warn('AudioManager: no audio files configured.');
+                    this.initialized = true;
+                    return;
+                }
 
-                Object.entries(audioFiles).forEach(([key, config]) => {
-                    const src = `${basePath}${config.file}`;
+                this.loadingPromises = [];
+
+                entries.forEach(([key, fileConfig]) => {
+                    if (!fileConfig || !fileConfig.file) {
+                        console.warn(`AudioManager: missing file config for "${key}"`);
+                        return;
+                    }
+                    const src = `${basePath}${fileConfig.file}`;
                     const audio = new Audio(src);
-                    audio.volume = config.isMusic ? this.musicVolume : this.volume;
-                    audio.loop = config.loop;
+                    audio.volume = fileConfig.isMusic ? this.musicVolume : this.volume;
+                    audio.loop = Boolean(fileConfig.loop);
                     audio.preload = 'auto';
                     this.audios[key] = audio;
 
@@ -1006,12 +1000,14 @@
                         (this.musicEnabled ? this.musicVolume : 0) : this.volume;
                     // Limit concurrency for very frequent SFX
                     if (!this._playingCounts) this._playingCounts = {};
-                    const maxVoices = (soundName === 'bulletShoot' || soundName === 'enemyHit') ? 4 : 8;
                     const key = soundName;
                     const now = Date.now();
                     if (!this._playingCounts[key]) this._playingCounts[key] = [];
+                    const windowMs = this.settings.concurrencyWindowMs;
+                    const maxVoicesConfig = this.settings.maxVoices || {};
+                    const maxVoices = maxVoicesConfig[key] ?? maxVoicesConfig.default ?? 8;
                     // Prune finished voices
-                    this._playingCounts[key] = this._playingCounts[key].filter(t => now - t < 250);
+                    this._playingCounts[key] = this._playingCounts[key].filter(t => now - t < windowMs);
                     if (this._playingCounts[key].length >= maxVoices) return;
                     this._playingCounts[key].push(now);
                     audio.play().catch(e => console.warn(`Failed to play ${soundName}:`, e));
