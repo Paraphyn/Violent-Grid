@@ -6410,6 +6410,12 @@
                 if (Number.isFinite(this.initialSpawnDelayUntil)) {
                     this.initialSpawnDelayUntil += pauseDelta;
                 }
+                if (Number.isFinite(this.wavePauseEndTime) && this.wavePauseEndTime > 0) {
+                    this.wavePauseEndTime += pauseDelta;
+                }
+                if (Number.isFinite(this.bossWarningEndTime) && this.bossWarningEndTime > 0) {
+                    this.bossWarningEndTime += pauseDelta;
+                }
                 if (this.inBossPhase && Number.isFinite(this.bossTimerPauseStart) && this.bossTimerPauseStart > 0) {
                     this.bossTimerPauseStart += pauseDelta;
                 }
@@ -7727,10 +7733,13 @@
                     } else {
                         this.uiManager.hideBossWarning();
                     }
-                } else if (this.inWavePause) {
-                    const remainingTime = Math.max(0, this.wavePauseEndTime - Date.now());
-                    const seconds = Math.ceil(remainingTime / 1000);
-                    this.uiManager.showNextWaveTimer(seconds);
+                 } else if (this.inWavePause) {
+                     const pauseActive = (this.paused || this.upgradePause) && Number.isFinite(this.pauseTime) && this.pauseTime > 0;
+                     const nowReference = pauseActive ? this.pauseTime : Date.now();
+                     const endTime = Number.isFinite(this.wavePauseEndTime) ? this.wavePauseEndTime : nowReference;
+                     const remainingTime = Math.max(0, endTime - nowReference);
+                     const seconds = Math.ceil(remainingTime / 1000);
+                     this.uiManager.showNextWaveTimer(seconds);
                 } else {
                     this.uiManager.hideNextWaveTimer();
                     if (this.uiManager && this.uiManager.hideBossWarning) this.uiManager.hideBossWarning();
