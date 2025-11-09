@@ -13,6 +13,7 @@
             pauseActivate: { file: 'pause-activate.wav', loop: false },
             pauseDeactivate: { file: 'pause-deactivate.wav', loop: false },
             dash: { file: 'dash.wav', loop: false },
+            enemyDash: { file: 'Enemy-Dash.wav', loop: false },
             XP_collect: { file: 'xp-collect.wav', loop: false },
             Level_UP: { file: 'level-up.wav', loop: false },
             UpgradeSelected: { file: 'level-up.wav', loop: false },
