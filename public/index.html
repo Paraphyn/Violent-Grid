@@ -6726,15 +6726,17 @@
                         if (this.shakeCanvas) this.shakeCanvas(6, 250);
                             }
                             // Apply AoE damage to enemies
-                            const radius = r.aoeRadius;
-                            const minX = r.x - radius, maxX = r.x + radius;
-                            const minY = r.y - radius, maxY = r.y + radius;
+                            const baseRadius = r.aoeRadius;
                             for (let ei = this.enemies.length - 1; ei >= 0; ei--) {
                                 const enemy = this.enemies[ei];
                                 if (!enemy) continue;
-                                if (enemy.x < minX || enemy.x > maxX || enemy.y < minY || enemy.y > maxY) continue;
-                                const d2 = (enemy.x - r.x) * (enemy.x - r.x) + (enemy.y - r.y) * (enemy.y - r.y);
-                                if (d2 <= radius * radius) {
+                                const enemyRadius = typeof enemy.radius === 'number' ? enemy.radius : 0;
+                                const combinedRadius = baseRadius + enemyRadius;
+                                const dx = enemy.x - r.x;
+                                const dy = enemy.y - r.y;
+                                if (Math.abs(dx) > combinedRadius || Math.abs(dy) > combinedRadius) continue;
+                                const d2 = dx * dx + dy * dy;
+                                if (d2 <= combinedRadius * combinedRadius) {
                                     if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
                                     if (!enemy.takeDamage(r.damage, this.effects, this.score, this.ctx, this.audio, {
                                         damageType: 'rocket',
@@ -6791,15 +6793,17 @@
                                 if (this.shakeCanvas) this.shakeCanvas(6, 240);
                             }
                             // AoE damage to enemies
-                            const radius = m.aoeRadius;
-                            const minX = m.x - radius, maxX = m.x + radius;
-                            const minY = m.y - radius, maxY = m.y + radius;
+                            const baseRadius = m.aoeRadius;
                             for (let ei = this.enemies.length - 1; ei >= 0; ei--) {
                                 const enemy = this.enemies[ei];
                                 if (!enemy) continue;
-                                if (enemy.x < minX || enemy.x > maxX || enemy.y < minY || enemy.y > maxY) continue;
-                                const d2 = (enemy.x - m.x) * (enemy.x - m.x) + (enemy.y - m.y) * (enemy.y - m.y);
-                                if (d2 <= radius * radius) {
+                                const enemyRadius = typeof enemy.radius === 'number' ? enemy.radius : 0;
+                                const combinedRadius = baseRadius + enemyRadius;
+                                const dx = enemy.x - m.x;
+                                const dy = enemy.y - m.y;
+                                if (Math.abs(dx) > combinedRadius || Math.abs(dy) > combinedRadius) continue;
+                                const d2 = dx * dx + dy * dy;
+                                if (d2 <= combinedRadius * combinedRadius) {
                                     if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
                                     if (!enemy.takeDamage(m.damage, this.effects, this.score, this.ctx, this.audio, {
                                         damageType: 'mine',
@@ -6872,13 +6876,14 @@
                             }
                             // AoE damage
                             const ex = r.x, ey = r.y, aoe = exploded.aoeRadius;
-                            const minX = ex - aoe, maxX = ex + aoe, minY = ey - aoe, maxY = ey + aoe;
                             for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
                                 const en = this.enemies[ej];
                                 if (!en) continue;
-                                if (en.x < minX || en.x > maxX || en.y < minY || en.y > maxY) continue;
+                                const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
+                                const combinedRadius = aoe + enemyRadius;
                                 const ddx = en.x - ex, ddy = en.y - ey;
-                                if (ddx*ddx + ddy*ddy <= aoe * aoe) {
+                                if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
+                                if (ddx*ddx + ddy*ddy <= combinedRadius * combinedRadius) {
                                     if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
                                     if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
                                         damageType: 'rocket',
@@ -6940,18 +6945,18 @@
                                       this.audio.playSound('RocketExplotion');
                                       if (this.shakeCanvas) this.shakeCanvas(7, 260);
                                   }
-                                  const ex = exploded ? exploded.x : r.x;
-                                  const ey = exploded ? exploded.y : r.y;
-                                  const aoe = exploded ? exploded.aoeRadius : r.aoeRadius;
-                                  const minX = ex - aoe, maxX = ex + aoe;
-                                  const minY = ey - aoe, maxY = ey + aoe;
-                                  for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
-                                      const en = this.enemies[ej];
-                                      if (!en) continue;
-                                      if (en.x < minX || en.x > maxX || en.y < minY || en.y > maxY) continue;
-                                      const ddx = en.x - ex;
-                                      const ddy = en.y - ey;
-                                      if (ddx * ddx + ddy * ddy <= aoe * aoe) {
+                                    const ex = exploded ? exploded.x : r.x;
+                                    const ey = exploded ? exploded.y : r.y;
+                                    const aoe = exploded ? exploded.aoeRadius : r.aoeRadius;
+                                    for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
+                                        const en = this.enemies[ej];
+                                        if (!en) continue;
+                                        const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
+                                        const combinedRadius = aoe + enemyRadius;
+                                        const ddx = en.x - ex;
+                                        const ddy = en.y - ey;
+                                        if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
+                                        if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
                                           if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
                                           if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
                                               damageType: 'rocket',
@@ -7003,13 +7008,14 @@
                             }
                             // AoE damage
                             const ex = m.x, ey = m.y, aoe = exploded.aoeRadius;
-                            const minX = ex - aoe, maxX = ex + aoe, minY = ey - aoe, maxY = ey + aoe;
                             for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
                                 const en = this.enemies[ej];
                                 if (!en) continue;
-                                if (en.x < minX || en.x > maxX || en.y < minY || en.y > maxY) continue;
+                                const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
+                                const combinedRadius = aoe + enemyRadius;
                                 const ddx = en.x - ex, ddy = en.y - ey;
-                                if (ddx*ddx + ddy*ddy <= aoe * aoe) {
+                                if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
+                                if (ddx*ddx + ddy*ddy <= combinedRadius * combinedRadius) {
                                     if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
                                     if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
                                         damageType: 'mine',
@@ -7055,18 +7061,18 @@
                                       this.audio.playSound('RocketExplotion');
                                       if (this.shakeCanvas) this.shakeCanvas(7, 260);
                                   }
-                                  const ex = exploded ? exploded.x : m.x;
-                                  const ey = exploded ? exploded.y : m.y;
-                                  const aoe = exploded ? exploded.aoeRadius : m.aoeRadius;
-                                  const minX = ex - aoe, maxX = ex + aoe;
-                                  const minY = ey - aoe, maxY = ey + aoe;
-                                  for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
-                                      const en = this.enemies[ej];
-                                      if (!en) continue;
-                                      if (en.x < minX || en.x > maxX || en.y < minY || en.y > maxY) continue;
-                                      const ddx = en.x - ex;
-                                      const ddy = en.y - ey;
-                                      if (ddx * ddx + ddy * ddy <= aoe * aoe) {
+                                    const ex = exploded ? exploded.x : m.x;
+                                    const ey = exploded ? exploded.y : m.y;
+                                    const aoe = exploded ? exploded.aoeRadius : m.aoeRadius;
+                                    for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
+                                        const en = this.enemies[ej];
+                                        if (!en) continue;
+                                        const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
+                                        const combinedRadius = aoe + enemyRadius;
+                                        const ddx = en.x - ex;
+                                        const ddy = en.y - ey;
+                                        if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
+                                        if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
                                           if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
                                         if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
                                             damageType: 'mine',
