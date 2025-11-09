@@ -929,6 +929,7 @@
 
             async initialize() {
                 if (this.initialized) return;
+                const basePath = 'Sounds/';
                 const audioFiles = {
                     lobbyMusic: { file: 'lobby-music.mp3', loop: true, isMusic: true },
                     backgroundMusic: { file: 'background-music.mp3', loop: true, isMusic: true },
@@ -960,7 +961,8 @@
                 };
 
                 Object.entries(audioFiles).forEach(([key, config]) => {
-                    const audio = new Audio(config.file);
+                    const src = `${basePath}${config.file}`;
+                    const audio = new Audio(src);
                     audio.volume = config.isMusic ? this.musicVolume : this.volume;
                     audio.loop = config.loop;
                     audio.preload = 'auto';
@@ -968,13 +970,13 @@
 
                     const loadPromise = new Promise((resolve) => {
                         const onLoad = () => {
-                            console.log(`✓ Loaded: ${config.file}`);
+                            console.log(`✓ Loaded: ${src}`);
                             audio.removeEventListener('canplaythrough', onLoad);
                             audio.removeEventListener('error', onError);
                             resolve();
                         };
                         const onError = (e) => {
-                            console.warn(`✗ Failed to load ${config.file}:`, e);
+                            console.warn(`✗ Failed to load ${src}:`, e);
                             resolve();
                         };
                         audio.addEventListener('canplaythrough', onLoad);
