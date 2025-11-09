@@ -730,6 +730,7 @@
         </div>
     </div>
     <script src="enemies.js"></script>
+    <script src="player-config.js"></script>
 
     <script>
         // Global speed && scaling settings
@@ -1716,35 +1717,7 @@
             return a;
         }
 
-        // XP / Level configuration
-        const XP_LEVELS = [
-            50, // Level 1 -> 2
-            100, // Level 2 -> 3
-            150, // Level 3 -> 4
-            200, // Level 4 -> 5
-            250, // Level 5 -> 6
-            300, // Level 6 -> 7
-            350, // Level 7 -> 8
-            400, // Level 8 -> 9
-            450, // Level 9 -> 10
-			500, // Level 10 -> 11
-			550, // Level 11 -> 12
-			600, // Level 12 -> 13
-			650, // Level 12 -> 13
-			700, // Level 13 -> 14
-			750, // Level 14 -> 15
-			800, // Level 15 -> 16
-			850, // Level 16 -> 17
-			900, // Level 17 -> 18
-			950, // Level 18 -> 19
-			1000, // Level 19 -> 20			
-        ]; // Extendable; last value repeats for higher levels if needed
-
-        function getRequiredXpForLevel(level) {
-            if (level <= 0) return XP_LEVELS[0] || 100;
-            if (level - 1 < XP_LEVELS.length) return XP_LEVELS[level - 1];
-            return XP_LEVELS[XP_LEVELS.length - 1];
-        }
+        // XP / Level configuration is defined in player-config.js
 
         // Shape renderer utility
         class ShapeRenderer {
@@ -7656,58 +7629,21 @@
         class UpgradeManager {
             constructor(game) {
                 this.game = game;
-                this.upgrades = [
-                    { key: 'health_1', level: 1, title: 'HEALTH', desc: 'Add 15 Health Points', image: 'Upgrade Icons/health.png', category: 'health', apply: () => { this.game.player.maxHealth += 15; this.game.player.health = Math.min(this.game.player.maxHealth, this.game.player.health + 15); } },
-					{ key: 'health_2', level: 4, title: 'HEALTH 2', desc: 'Add 15 Health Points', image: 'Upgrade Icons/health.png', category: 'health', apply: () => { this.game.player.maxHealth += 15; this.game.player.health = Math.min(this.game.player.maxHealth, this.game.player.health + 15); } },
-					{ key: 'health_3', level: 7, title: 'HEALTH 3', desc: 'Add 15 Health Points', image: 'Upgrade Icons/health.png', category: 'health', apply: () => { this.game.player.maxHealth += 15; this.game.player.health = Math.min(this.game.player.maxHealth, this.game.player.health + 15); } },
-					{ key: 'health_4', level: 10, title: 'HEALTH 4', desc: 'Add 15 Health Points', image: 'Upgrade Icons/health.png', category: 'health', apply: () => { this.game.player.maxHealth += 15; this.game.player.health = Math.min(this.game.player.maxHealth, this.game.player.health + 15); } },
-                    { key: 'speed_1', level: 1, title: 'SPEED', desc: '+5% Speed', image: 'Upgrade Icons/speed.png', category: 'speed', apply: () => { this.game.player.speedMultiplier = (this.game.player.speedMultiplier || 1) * 1.05; } },
-					{ key: 'speed_2', level: 3, title: 'SPEED 2', desc: '+5% Speed', image: 'Upgrade Icons/speed.png', category: 'speed', apply: () => { this.game.player.speedMultiplier = (this.game.player.speedMultiplier || 1) * 1.05; } },
-                    { key: 'speed_3', level: 6, title: 'SPEED 3', desc: '+5% Speed', image: 'Upgrade Icons/speed.png', category: 'speed', apply: () => { this.game.player.speedMultiplier = (this.game.player.speedMultiplier || 1) * 1.05; } },
-					{ key: 'damage_1', level: 1, title: 'DAMAGE', desc: '+10% of Weapons Damage', image: 'Upgrade Icons/damage.png', category: 'damage', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
-					{ key: 'damage_2', level: 5, title: 'DAMAGE 2', desc: '+10% of Weapons Damage', image: 'Upgrade Icons/damage.png', category: 'damage', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
-                    { key: 'damage_3', level: 8, title: 'DAMAGE 3', desc: '+10% of Weapons Damage', image: 'Upgrade Icons/damage.png', category: 'damage', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
-					{ key: 'damage_4', level: 10, title: 'DAMAGE 4', desc: '+10% of Weapons Damage', image: 'Upgrade Icons/damage.png', category: 'damage', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
-                    { key: 'explosion_area_1', level: 4, title: 'EXPLOSION AREA', desc: '+10% Mine & Rocket Area', image: 'Upgrade Icons/area_damage_size.png', category: 'explosion_area', apply: () => {
-                        const player = this.game.player;
-                        if (!player) return;
-                        const current = player.explosionAreaMultiplier || 1;
-                        player.explosionAreaMultiplier = current * 1.10;
-                        const applyArea = (explosive) => {
-                            if (!explosive || typeof explosive._baseAoeRadius !== 'number') return;
-                            explosive.aoeRadius = explosive._baseAoeRadius * Math.sqrt(player.explosionAreaMultiplier);
-                        };
-                        if (Array.isArray(this.game.rockets)) this.game.rockets.forEach(applyArea);
-                        if (Array.isArray(this.game.mines)) this.game.mines.forEach(applyArea);
-                    } },
-                    { key: 'explosion_area_2', level: 8, title: 'EXPLOSION AREA 2', desc: '+10% Mine & Rocket Area', image: 'Upgrade Icons/area_damage_size.png', category: 'explosion_area', apply: () => {
-                        const player = this.game.player;
-                        if (!player) return;
-                        const current = player.explosionAreaMultiplier || 1;
-                        player.explosionAreaMultiplier = current * 1.10;
-                        const applyArea = (explosive) => {
-                            if (!explosive || typeof explosive._baseAoeRadius !== 'number') return;
-                            explosive.aoeRadius = explosive._baseAoeRadius * Math.sqrt(player.explosionAreaMultiplier);
-                        };
-                        if (Array.isArray(this.game.rockets)) this.game.rockets.forEach(applyArea);
-                        if (Array.isArray(this.game.mines)) this.game.mines.forEach(applyArea);
-                    } },
-                    { key: 'explosion_area_3', level: 12, title: 'EXPLOSION AREA 3', desc: '+10% Mine & Rocket Area', image: 'Upgrade Icons/area_damage_size.png', category: 'explosion_area', apply: () => {
-                        const player = this.game.player;
-                        if (!player) return;
-                        const current = player.explosionAreaMultiplier || 1;
-                        player.explosionAreaMultiplier = current * 1.10;
-                        const applyArea = (explosive) => {
-                            if (!explosive || typeof explosive._baseAoeRadius !== 'number') return;
-                            explosive.aoeRadius = explosive._baseAoeRadius * Math.sqrt(player.explosionAreaMultiplier);
-                        };
-                        if (Array.isArray(this.game.rockets)) this.game.rockets.forEach(applyArea);
-                        if (Array.isArray(this.game.mines)) this.game.mines.forEach(applyArea);
-                    } },
-					{ key: 'railgun_charge_1', level: 3, title: 'RAILGUN CHARGE', desc: '10% Faster Railgun Charge', image: 'Upgrade Icons/railgun_charge.png', category: 'railgun_charge', apply: () => { this.game.player.railgunChargeSpeedMultiplier = (this.game.player.railgunChargeSpeedMultiplier || 1) * 1.10; } },
-					{ key: 'railgun_charge_2', level: 7, title: 'RAILGUN CHARGE 2', desc: '10% Faster Railgun Charge', image: 'Upgrade Icons/railgun_charge.png', category: 'railgun_charge', apply: () => { this.game.player.railgunChargeSpeedMultiplier = (this.game.player.railgunChargeSpeedMultiplier || 1) * 1.10; } },
-					{ key: 'railgun_charge_3', level: 10, title: 'RAILGUN CHARGE 3', desc: '10% Faster Railgun Charge', image: 'Upgrade Icons/railgun_charge.png', category: 'railgun_charge', apply: () => { this.game.player.railgunChargeSpeedMultiplier = (this.game.player.railgunChargeSpeedMultiplier || 1) * 1.10; } }
-                ];
+                const baseUpgrades = Array.isArray(window.PLAYER_UPGRADES) ? window.PLAYER_UPGRADES : [];
+                if (!Array.isArray(window.PLAYER_UPGRADES)) {
+                    console.warn('PLAYER_UPGRADES is not defined; UpgradeManager will have no upgrades configured.');
+                }
+                this.upgrades = baseUpgrades.map((config) => {
+                    const { apply, ...rest } = config;
+                    return {
+                        ...rest,
+                        apply: () => {
+                            if (typeof apply === 'function') {
+                                apply(this.game);
+                            }
+                        }
+                    };
+                });
                 this.taken = new Set();
                 this.currentOptions = [];
                 this.keyHandler = null;
