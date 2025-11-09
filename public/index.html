@@ -6046,7 +6046,7 @@
                     const themeSelector = document.getElementById('themeSelector');
                     if (themeSelector) {
                         const themeOptions = Array.from(themeSelector.querySelectorAll('.theme-option'));
-                        const THEME_UNLOCKS = { default: 0, cyan: 1500, rainbow: 3500 };
+                        const THEME_UNLOCKS = { default: 0, cyan: 2500, rainbow: 5000 };
                         const best = this.bestScore || 0;
                         themeOptions.forEach(opt => {
                             const t = opt.getAttribute('data-theme');
@@ -6055,8 +6055,8 @@
                         });
                         const themeCyanNameEl = document.getElementById('themeCyanName');
                         const themeRainbowNameEl = document.getElementById('themeRainbowName');
-                        if (themeCyanNameEl) themeCyanNameEl.textContent = (best >= 1500) ? 'Glow' : '2500 Pts.';
-                        if (themeRainbowNameEl) themeRainbowNameEl.textContent = (best >= 3500) ? 'Rainbow' : '5000 Pts.';
+                        if (themeCyanNameEl) themeCyanNameEl.textContent = (best >= 2500) ? 'Glow' : '2500 Pts.';
+                        if (themeRainbowNameEl) themeRainbowNameEl.textContent = (best >= 5000) ? 'Rainbow' : '5000 Pts.';
                     }
                 } catch (e) {}
             }
