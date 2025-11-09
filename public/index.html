@@ -1242,6 +1242,7 @@
                 this.railgunCharging = false;
                 this.railgunMaxChargeSoundPlayed = false;
 				this._lastHealth = this.health;
+                this.explosionAreaMultiplier = 1;
                 // Visual theme for rendering: 'default' | 'cyan' | 'rainbow'
                 this.theme = 'default';
             }
@@ -1530,7 +1531,7 @@
 
         // Player rocket projectile
         class Rocket {
-            constructor(x, y, dirX, dirY, damage = PLAYER_WEAPON_BASE_DAMAGE.rocket) {
+            constructor(x, y, dirX, dirY, damage = PLAYER_WEAPON_BASE_DAMAGE.rocket, areaMultiplier = 1) {
                 this.x = x;
                 this.y = y;
                 const len = Math.sqrt(dirX * dirX + dirY * dirY) || 1;
@@ -1542,7 +1543,9 @@
                 this.life = 240; // up to ~4s
                 this.damage = damage;
                 this.type = 'rocket';
-                this.aoeRadius = 100;
+                this._baseAoeRadius = 100;
+                const areaMul = areaMultiplier > 0 ? areaMultiplier : 1;
+                this.aoeRadius = this._baseAoeRadius * Math.sqrt(areaMul);
                 this.explodesOnRemove = true; // signal game to trigger AoE when removed
                 this.blinkPhase = 0;
                 this.blinkSpeed = 0.07; // slow blink
@@ -1582,14 +1585,16 @@
 
         // Player mine (stationary explosive)
         class Mine {
-            constructor(x, y, playerRadius, damage = PLAYER_WEAPON_BASE_DAMAGE.mine) {
+            constructor(x, y, playerRadius, damage = PLAYER_WEAPON_BASE_DAMAGE.mine, areaMultiplier = 1) {
                 this.x = x;
                 this.y = y;
                 this.radius = Math.max(2, Math.floor((playerRadius || 20) * 0.25 * 1.15));
                 this.life = 180; // ~3s
                 this.damage = damage;
                 this.type = 'mine';
-                this.aoeRadius = 100; // same as rocket
+                this._baseAoeRadius = 100; // same as rocket
+                const areaMul = areaMultiplier > 0 ? areaMultiplier : 1;
+                this.aoeRadius = this._baseAoeRadius * Math.sqrt(areaMul);
                 this.explodesOnRemove = true; // signal game to trigger AoE when removed
                 this.blinkPhase = 0;
                 this.blinkSpeed = 0.25; // faster blink than rocket
@@ -6117,12 +6122,14 @@
                 this.player.speedMultiplier = 1;
                 this.player.bulletDamageMultiplier = 1;
                 this.player.railgunChargeSpeedMultiplier = 1;
+                this.player.explosionAreaMultiplier = 1;
                 if (this.player) {
                     this.player.maxHealth = 100;
                     this.player.health = 100;
                     this.player.speedMultiplier = 1;
                     this.player.bulletDamageMultiplier = 1;
                     this.player.railgunChargeSpeedMultiplier = 1;
+                    this.player.explosionAreaMultiplier = 1;
                 }
                 
                 // Grouped wave state
@@ -6396,7 +6403,8 @@
                 const dmgMul = this.player.bulletDamageMultiplier || 1;
                 const baseDamage = PLAYER_WEAPON_BASE_DAMAGE.mine;
                 const dmg = Math.floor(baseDamage * dmgMul);
-                this.mines.push(new Mine(this.player.x, this.player.y, this.player.radius, dmg));
+                const areaMul = this.player.explosionAreaMultiplier || 1;
+                this.mines.push(new Mine(this.player.x, this.player.y, this.player.radius, dmg, areaMul));
                 this.lastMinePlaced = now;
                 if (this.audio) this.audio.playSound('mine_placed');
             }
@@ -6431,7 +6439,8 @@
                 const dy = this.input.mouse.y - this.player.y;
                 const baseDamage = PLAYER_WEAPON_BASE_DAMAGE.rocket;
                 const dmg = Math.floor(baseDamage * (this.player.bulletDamageMultiplier || 1));
-                this.rockets.push(new Rocket(this.player.x, this.player.y, dx, dy, dmg));
+                const areaMul = this.player.explosionAreaMultiplier || 1;
+                this.rockets.push(new Rocket(this.player.x, this.player.y, dx, dy, dmg, areaMul));
                 this.lastRocketShot = now;
                 this.audio.playSound('RocketLaunch');
             }
@@ -7802,6 +7811,18 @@
 					{ key: 'damage_2', level: 5, title: 'DAMAGE 2', desc: '+10% of Weapons Damage', image: 'damage.png', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
                     { key: 'damage_3', level: 8, title: 'DAMAGE 3', desc: '+10% of Weapons Damage', image: 'damage.png', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
 					{ key: 'damage_4', level: 10, title: 'DAMAGE 4', desc: '+10% of Weapons Damage', image: 'damage.png', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
+                    { key: 'explosion_area_1', level: 4, title: 'EXPLOSION AREA', desc: '+10% Mine & Rocket Area', image: 'damage.png', apply: () => {
+                        const player = this.game.player;
+                        if (!player) return;
+                        const current = player.explosionAreaMultiplier || 1;
+                        player.explosionAreaMultiplier = current * 1.10;
+                        const applyArea = (explosive) => {
+                            if (!explosive || typeof explosive._baseAoeRadius !== 'number') return;
+                            explosive.aoeRadius = explosive._baseAoeRadius * Math.sqrt(player.explosionAreaMultiplier);
+                        };
+                        if (Array.isArray(this.game.rockets)) this.game.rockets.forEach(applyArea);
+                        if (Array.isArray(this.game.mines)) this.game.mines.forEach(applyArea);
+                    } },
 					{ key: 'railgun_charge_1', level: 3, title: 'RAILGUN CHARGE', desc: '10% Faster Railgun Charge', image: 'railgun_charge.png', apply: () => { this.game.player.railgunChargeSpeedMultiplier = (this.game.player.railgunChargeSpeedMultiplier || 1) * 1.10; } },
 					{ key: 'railgun_charge_2', level: 7, title: 'RAILGUN CHARGE 2', desc: '10% Faster Railgun Charge', image: 'railgun_charge.png', apply: () => { this.game.player.railgunChargeSpeedMultiplier = (this.game.player.railgunChargeSpeedMultiplier || 1) * 1.10; } },
 					{ key: 'railgun_charge_3', level: 10, title: 'RAILGUN CHARGE 3', desc: '10% Faster Railgun Charge', image: 'railgun_charge.png', apply: () => { this.game.player.railgunChargeSpeedMultiplier = (this.game.player.railgunChargeSpeedMultiplier || 1) * 1.10; } }
