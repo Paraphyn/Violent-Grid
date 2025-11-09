@@ -350,9 +350,9 @@
             to { filter: hue-rotate(360deg); }
         }
         
-        .music-toggle {
+        .music-toggle,
+        .sfx-toggle {
             position: absolute;
-            top: 18px;
             right: 20px;
             width: 60px;
             height: 60px;
@@ -368,11 +368,21 @@
             z-index: 300;
         }
         
-        .music-toggle:hover {
+        .music-toggle {
+            top: 18px;
+        }
+
+        .sfx-toggle {
+            top: 86px;
+        }
+        
+        .music-toggle:hover,
+        .sfx-toggle:hover {
             transform: scale(1.1);
         }
         
-        .music-icon {
+        .music-icon,
+        .sfx-icon {
             width: 32px;
             height: 32px;
             display: block;
@@ -687,6 +697,11 @@
     <div class="music-toggle" id="musicToggle" title="Toggle Music">
         <img class="music-icon" id="musicIcon" src="sound-on.png" alt="Music On" />
     </div>
+      
+      <!-- Sound Effects Toggle Button -->
+      <div class="sfx-toggle" id="sfxToggle" title="Toggle Sound Effects" aria-pressed="true">
+          <img class="sfx-icon" id="sfxIcon" src="sound-fx-on.png" alt="Sound Effects On" />
+      </div>
     
     <!-- Quit Button for Pause Menu -->
     <button type="button" class="quit-button" id="quitButton" title="Return to Lobby">Back to Lobby</button>
@@ -926,6 +941,41 @@
                 this.musicVolume = this.settings.musicVolume;
                 this.loadingPromises = [];
                 this.musicEnabled = true;
+                this.soundEffectsEnabled = true;
+                this.musicKeys = new Set();
+                this.soundEffectKeys = new Set();
+                this._audioSettingsStorageKey = 'geometry_rush_audio_settings';
+                this._loadAudioSettings();
+            }
+
+            _loadAudioSettings() {
+                if (typeof localStorage === 'undefined') return;
+                try {
+                    const raw = localStorage.getItem(this._audioSettingsStorageKey);
+                    if (!raw) return;
+                    const parsed = JSON.parse(raw);
+                    if (typeof parsed.musicEnabled === 'boolean') {
+                        this.musicEnabled = parsed.musicEnabled;
+                    }
+                    if (typeof parsed.soundEffectsEnabled === 'boolean') {
+                        this.soundEffectsEnabled = parsed.soundEffectsEnabled;
+                    }
+                } catch (e) {
+                    console.warn('AudioManager: Failed to load audio settings.', e);
+                }
+            }
+
+            _persistAudioSettings() {
+                if (typeof localStorage === 'undefined') return;
+                try {
+                    const payload = JSON.stringify({
+                        musicEnabled: this.musicEnabled,
+                        soundEffectsEnabled: this.soundEffectsEnabled
+                    });
+                    localStorage.setItem(this._audioSettingsStorageKey, payload);
+                } catch (e) {
+                    console.warn('AudioManager: Failed to persist audio settings.', e);
+                }
             }
 
             async initialize() {
@@ -947,8 +997,16 @@
                         return;
                     }
                     const src = `${basePath}${fileConfig.file}`;
+                    const isMusic = Boolean(fileConfig.isMusic);
+                    if (isMusic) {
+                        this.musicKeys.add(key);
+                    } else {
+                        this.soundEffectKeys.add(key);
+                    }
                     const audio = new Audio(src);
-                    audio.volume = fileConfig.isMusic ? this.musicVolume : this.volume;
+                    audio.volume = isMusic
+                        ? (this.musicEnabled ? this.musicVolume : 0)
+                        : (this.soundEffectsEnabled ? this.volume : 0);
                     audio.loop = Boolean(fileConfig.loop);
                     audio.preload = 'auto';
                     this.audios[key] = audio;
@@ -978,15 +1036,19 @@
 
             playSound(soundName) {
                 if (!this.initialized || !this.audios[soundName]) return;
+                const isMusic = this.musicKeys.has(soundName);
+                const isSoundEffect = !isMusic;
                 
                 // Check if it's music && if music is disabled
-                if ((soundName === 'backgroundMusic' || soundName === 'lobbyMusic') && !this.musicEnabled) return;
+                if (isMusic && !this.musicEnabled) return;
+                if (isSoundEffect && !this.soundEffectsEnabled) return;
                 
                 try {
                     const audio = this.audios[soundName];
                     audio.currentTime = 0;
-                    audio.volume = (audio === this.audios.backgroundMusic || audio === this.audios.lobbyMusic) ? 
-                        (this.musicEnabled ? this.musicVolume : 0) : this.volume;
+                    audio.volume = isMusic
+                        ? (this.musicEnabled ? this.musicVolume : 0)
+                        : (this.soundEffectsEnabled ? this.volume : 0);
                     // Limit concurrency for very frequent SFX
                     if (!this._playingCounts) this._playingCounts = {};
                     const key = soundName;
@@ -1007,7 +1069,15 @@
 
             startLoopingSound(soundName) {
                 if (!this.initialized || !this.audios[soundName]) return;
-                this.audios[soundName].play().catch(e => console.warn(`Failed to start looping ${soundName}:`, e));
+                const isMusic = this.musicKeys.has(soundName);
+                if (isMusic && !this.musicEnabled) return;
+                if (!isMusic && !this.soundEffectsEnabled) return;
+                const audio = this.audios[soundName];
+                audio.currentTime = 0;
+                audio.volume = isMusic
+                    ? (this.musicEnabled ? this.musicVolume : 0)
+                    : (this.soundEffectsEnabled ? this.volume : 0);
+                audio.play().catch(e => console.warn(`Failed to start looping ${soundName}:`, e));
             }
 
             stopLoopingSound(soundName) {
@@ -1074,13 +1144,34 @@
                         // Pause all music
                         if (this.audios.lobbyMusic) {
                             this.audios.lobbyMusic.pause();
+                            this.audios.lobbyMusic.currentTime = 0;
                         }
                         if (this.audios.backgroundMusic) {
                             this.audios.backgroundMusic.pause();
+                            this.audios.backgroundMusic.currentTime = 0;
                         }
                     }
                 }
+                this._persistAudioSettings();
                 return this.musicEnabled;
+            }
+
+            toggleSoundEffects() {
+                this.soundEffectsEnabled = !this.soundEffectsEnabled;
+                if (this.initialized) {
+                    Object.entries(this.audios).forEach(([key, audio]) => {
+                        const isMusic = this.musicKeys.has(key);
+                        if (isMusic) return;
+                        if (this.soundEffectsEnabled) {
+                            audio.volume = this.volume;
+                        } else {
+                            audio.pause();
+                            audio.currentTime = 0;
+                        }
+                    });
+                }
+                this._persistAudioSettings();
+                return this.soundEffectsEnabled;
             }
         }
 
@@ -5317,6 +5408,8 @@
                 const startButton = document.getElementById('startButton');
                 const musicToggle = document.getElementById('musicToggle');
                 const musicIcon = document.getElementById('musicIcon');
+                const sfxToggle = document.getElementById('sfxToggle');
+                const sfxIcon = document.getElementById('sfxIcon');
                 const quitButton = document.getElementById('quitButton');
                 // DEV: Wipe button in lobby
                 const wipeButton = document.getElementById('wipeButton');
@@ -5389,6 +5482,9 @@
                         try {
                             localStorage.removeItem('geometry_rush_settings');
                         } catch (e) {}
+                        try {
+                            localStorage.removeItem('geometry_rush_audio_settings');
+                        } catch (e) {}
                         // Full clear as fallback
                         try {
                             localStorage.clear();
@@ -5405,30 +5501,62 @@
                     });
                 }
                 
-                musicToggle.addEventListener('click', () => {
-                    const musicEnabled = this.audio.toggleMusic();
-                    if (musicEnabled) {
-                        musicIcon.src = 'sound-on.png';
-                        musicIcon.alt = 'Music On';
-                        // Ensure the correct track plays based on current state
-                        if (this.inLobby) {
-                            this.audio.stopGameMusic();
-                            this.audio.playLobbyMusic();
-                        } else if (this.gameOver) {
-                            // No music in game over
-                            this.audio.stopGameMusic();
-                            this.audio.stopLobbyMusic();
-                        } else if (!this.paused) {
-                            // In active gameplay
-                            this.audio.stopLobbyMusic();
-                            this.audio.playGameMusic();
-                        }
-                    } else {
-                        musicIcon.src = 'sound-off.png';
-                        musicIcon.alt = 'Music Off';
-                        // toggleMusic already pauses all music
+                const updateMusicIcon = (enabled) => {
+                    if (musicIcon) {
+                        musicIcon.src = enabled ? 'sound-on.png' : 'sound-off.png';
+                        musicIcon.alt = enabled ? 'Music On' : 'Music Off';
                     }
-                });
+                    if (musicToggle) {
+                        musicToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+                        musicToggle.title = enabled ? 'Disable Music' : 'Enable Music';
+                    }
+                };
+
+                updateMusicIcon(this.audio.musicEnabled);
+
+                if (musicToggle) {
+                    musicToggle.addEventListener('click', () => {
+                        const musicEnabled = this.audio.toggleMusic();
+                        updateMusicIcon(musicEnabled);
+                        if (musicEnabled) {
+                            // Ensure the correct track plays based on current state
+                            if (this.inLobby) {
+                                this.audio.stopGameMusic();
+                                this.audio.playLobbyMusic();
+                            } else if (this.gameOver) {
+                                // No music in game over
+                                this.audio.stopGameMusic();
+                                this.audio.stopLobbyMusic();
+                            } else if (!this.paused) {
+                                // In active gameplay
+                                this.audio.stopLobbyMusic();
+                                this.audio.playGameMusic();
+                            }
+                        } else {
+                            // toggleMusic already pauses all music
+                        }
+                    });
+                }
+
+                const updateSfxIcon = (enabled) => {
+                    if (sfxIcon) {
+                        sfxIcon.src = enabled ? 'sound-fx-on.png' : 'sound-fx-off.png';
+                        sfxIcon.alt = enabled ? 'Sound Effects On' : 'Sound Effects Off';
+                    }
+                    if (sfxToggle) {
+                        sfxToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+                        sfxToggle.title = enabled ? 'Disable Sound Effects' : 'Enable Sound Effects';
+                    }
+                };
+
+                updateSfxIcon(this.audio.soundEffectsEnabled);
+
+                if (sfxToggle) {
+                    sfxToggle.addEventListener('click', () => {
+                        const soundEffectsEnabled = this.audio.toggleSoundEffects();
+                        updateSfxIcon(soundEffectsEnabled);
+                    });
+                }
                 // Theme unlock state based on best score
                 const THEME_UNLOCKS = {
                     default: 0,
