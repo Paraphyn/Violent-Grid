@@ -190,7 +190,7 @@
             bottom: 20px;
             left: 20px;
             padding: 8px 14px;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: bold;
             color: #00ff00;
             background: rgba(0, 255, 0, 0.08);
@@ -227,7 +227,7 @@
         }
         
         .start-button {
-            padding: 12px 70px;
+            padding: 12px 80px;
             font-size: 12px;
             font-weight: bold;
             color: #ffffff;
@@ -392,8 +392,8 @@
             position: absolute;
             top: 18px;
             left: 20px;
-            width: 50px;
-            height: 50px;
+            width: 45px;
+            height: 45px;
             background: transparent;
             border: none;
             cursor: pointer;
@@ -417,12 +417,12 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 36px;
-            height: 36px;
+            width: 34px;
+            height: 34px;
             border-radius: 50%;
             border: 2px solid #ffffff;
             color: #00e5ff;
-            font-family: 'Orbitron', sans-serif;
+            font-family: Roboto, sans-serif;
             font-weight: 700;
             font-size: 20px;
             letter-spacing: 1px;
@@ -463,7 +463,7 @@
             border: 2px solid #00e5ff;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
             padding: 40px 48px 36px;
-            font-family: 'Orbitron', sans-serif;
+            font-family: Roboto, sans-serif;
         }
 
         .tutorial-close {
@@ -930,33 +930,33 @@
             async initialize() {
                 if (this.initialized) return;
                 const audioFiles = {
-                    bulletShoot: { file: 'bullet-shoot.wav', loop: false },
+                    lobbyMusic: { file: 'lobby-music.mp3', loop: true, isMusic: true },
+                    backgroundMusic: { file: 'background-music.mp3', loop: true, isMusic: true },
+					buttonClick: { file: 'button-click.wav', loop: false },
+					pauseActivate: { file: 'pause-activate.wav', loop: false },
+                    pauseDeactivate: { file: 'pause-deactivate.wav', loop: false },
+					dash: { file: 'dash.wav', loop: false },
+					XP_collect: { file: 'xp-collect.wav', loop: false },
+					'Level_UP': { file: 'level-up.wav', loop: false },
+					UpgradeSelected: { file: 'level-up.wav', loop: false },
+					BossAlertSound: { file: 'boss-alert.wav', loop: true },
+					playerDamage: { file: 'player-damage.wav', loop: false },  
+					bulletShoot: { file: 'bullet-shoot.wav', loop: false },
                     railgunShoot: { file: 'railgun-shoot.wav', loop: false },
                     MaxRailgunShot: { file: 'max-railgun-shot.wav', loop: false },
                     railgunCharge: { file: 'railgun-charge.wav', loop: true },
                     railgunChargeMax: { file: 'railgun-charge-max.wav', loop: false },
-                    BossAlertSound: { file: 'boss-alert.wav', loop: true },
-                    dash: { file: 'dash.wav', loop: false },
-                    playerDamage: { file: 'player-damage.wav', loop: false },
-                    pauseActivate: { file: 'pause-activate.wav', loop: false },
-                    pauseDeactivate: { file: 'pause-deactivate.wav', loop: false },
-                    gameOver: { file: 'game-over.wav', loop: false },
-                    enemyHit: { file: 'enemy-hit.wav', loop: false },
-                    enemyDeath: { file: 'enemy-death.wav', loop: false },
-                    SnakeEatsApple: { file: 'snake-eats-apple.wav', loop: false },
-                    boss_hit: { file: 'boss-hit.wav', loop: false },
-                    bossDefeated: { file: 'game-over.wav', loop: false },
-                    enemyShoot: { file: 'enemy-shoot.wav', loop: false },
-                    buttonClick: { file: 'button-click.wav', loop: false },
-                    mine_placed: { file: 'mine-placed.wav', loop: false },
-                    UpgradeSelected: { file: 'level-up.wav', loop: false },
-                    XP_collect: { file: 'xp-collect.wav', loop: false },
-                    'Level_UP': { file: 'level-up.wav', loop: false },
                     RocketLaunch: { file: 'rocket-launch.wav', loop: false },
                     RocketExplotion: { file: 'rocket-explosion.wav', loop: false },
                     RocketReload: { file: 'rocket-reload.wav', loop: false },
-                    lobbyMusic: { file: 'lobby-music.mp3', loop: true, isMusic: true },
-                    backgroundMusic: { file: 'background-music.mp3', loop: true, isMusic: true }
+					mine_placed: { file: 'mine-placed.wav', loop: false },
+                    enemyHit: { file: 'enemy-hit.wav', loop: false },
+					enemyShoot: { file: 'enemy-shoot.wav', loop: false },
+					enemyDeath: { file: 'enemy-death.wav', loop: false }, 
+                    boss_hit: { file: 'boss-hit.wav', loop: false },
+					SnakeEatsApple: { file: 'snake-eats-apple.wav', loop: false },
+                    bossDefeated: { file: 'game-over.wav', loop: false },					
+					gameOver: { file: 'game-over.wav', loop: false }
                 };
 
                 Object.entries(audioFiles).forEach(([key, config]) => {
@@ -1716,7 +1716,7 @@
             },
             octagon: { 
                 role: 'regular',
-                health: 800, 
+                health: 700, 
                 speed: 2, 
                 size: 50, 
                 points: 15, 
@@ -1728,7 +1728,7 @@
             },
             super_octagon: {
                 role: 'regular',
-                health: 800,
+                health: 1200,
                 speed: 1.5,
                 size: 80,
                 points: 150,
@@ -1775,7 +1775,7 @@
                 strokeColor: '#dd0000',
                 isBoss: true,
                 bossBaseType: 'rhombus',
-                bossTriangleSpawnIntervalMs: 2600
+                bossTriangleSpawnIntervalMs: 2700
             }
         };
 
@@ -1797,7 +1797,7 @@
         // Declared as a boss type so it appears in the boss pool, but it has a custom class/behavior below
         ENEMY_TYPES['tetris_cross_boss'] = {
             role: 'boss',
-            health: 3500,
+            health: 4500,
             speed: 0, // handled by custom boss class
             size: 60, // collision radius approximation
             points: 950,
@@ -1896,7 +1896,7 @@
             cellSize: null, // computed from canvas width
             // Piece/boss stats
             pieceHp: 250,
-            bossHp: 1650,
+            bossHp: 2500,
             playerCollisionDamage: 25,
             // Spawning & speeds
             spawnIntervalMs: 1200,
