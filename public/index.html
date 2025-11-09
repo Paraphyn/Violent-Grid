@@ -149,17 +149,6 @@
             pointer-events: none;
         }
         
-        .lobby-title {
-            font-size: 72px;
-            font-weight: bold;
-            color: #ffffff;
-            text-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff;
-            margin-bottom: 50px;
-            animation: titleGlow 2s ease-in-out infinite alternate;
-            /* Hide text when logo image is loaded */
-            position: relative;
-        }
-        
         .lobby-logo {
             max-width: 1000px;
             max-height: 400px;
@@ -167,7 +156,8 @@
             height: auto;
             filter: drop-shadow(0 0 20px #00ffff) drop-shadow(0 0 40px #00ffff);
             animation: logoGlow 2s ease-in-out infinite alternate;
-            display: none; /* Hidden by default, shown when image loads */
+            display: block;
+            margin-bottom: 50px;
         }
 
         /* .lobby-credit removed */
@@ -664,7 +654,6 @@
         <button class="tutorial-button" id="tutorialButton" title="How to Play" aria-haspopup="dialog" aria-controls="tutorialOverlay">
             <span class="tutorial-button-icon">?</span>
         </button>
-        <div class="lobby-title" id="lobbyTitle">GEOMETRY RUSH</div>
         <img class="lobby-logo" id="lobbyLogo" src="game-logo.png" alt="GEOMETRY RUSH" />
         <button class="start-button" id="startButton" style="margin-top: 24px;">
             START
@@ -5344,19 +5333,24 @@
                   const tutorialOverlay = document.getElementById('tutorialOverlay');
                   const tutorialCloseButton = document.getElementById('tutorialCloseButton');
                 
-                // Handle logo loading
-                lobbyLogo.addEventListener('load', () => {
-                    lobbyTitle.style.display = 'none';
-                    lobbyLogo.style.display = 'block';
-                    // Align radial center to logo center when ready
-                    if (this.updateLobbyRadialCenterFromLogo) this.updateLobbyRadialCenterFromLogo();
-                });
-                
-                // Handle logo load error (fallback to text)
-                lobbyLogo.addEventListener('error', () => {
-                    lobbyTitle.style.display = 'block';
-                    lobbyLogo.style.display = 'none';
-                });
+                if (lobbyLogo) {
+                    const handleLogoReady = () => {
+                        lobbyLogo.style.display = 'block';
+                        if (this.updateLobbyRadialCenterFromLogo) {
+                            this.updateLobbyRadialCenterFromLogo();
+                        }
+                    };
+                    
+                    if (lobbyLogo.complete && lobbyLogo.naturalWidth > 0) {
+                        handleLogoReady();
+                    } else {
+                        lobbyLogo.addEventListener('load', handleLogoReady, { once: true });
+                    }
+                    
+                    lobbyLogo.addEventListener('error', () => {
+                        console.error('Failed to load lobby logo asset:', lobbyLogo.src);
+                    });
+                }
                 
                 let rainInterval;
                 
