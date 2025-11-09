@@ -7811,7 +7811,7 @@
 					{ key: 'damage_2', level: 5, title: 'DAMAGE 2', desc: '+10% of Weapons Damage', image: 'damage.png', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
                     { key: 'damage_3', level: 8, title: 'DAMAGE 3', desc: '+10% of Weapons Damage', image: 'damage.png', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
 					{ key: 'damage_4', level: 10, title: 'DAMAGE 4', desc: '+10% of Weapons Damage', image: 'damage.png', apply: () => { this.game.player.bulletDamageMultiplier = (this.game.player.bulletDamageMultiplier || 1) * 1.10; } },
-                    { key: 'explosion_area_1', level: 4, title: 'EXPLOSION AREA', desc: '+10% Mine & Rocket Area', image: 'damage.png', apply: () => {
+                    { key: 'explosion_area_1', level: 4, title: 'EXPLOSION AREA', desc: '+10% Mine & Rocket Area', image: 'area_damage_size.png', apply: () => {
                         const player = this.game.player;
                         if (!player) return;
                         const current = player.explosionAreaMultiplier || 1;
