@@ -350,10 +350,19 @@
             to { filter: hue-rotate(360deg); }
         }
         
+        .audio-controls {
+            position: absolute;
+            top: 18px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 300;
+        }
+        
         .music-toggle,
         .sfx-toggle {
-            position: absolute;
-            right: 20px;
+            position: relative;
             width: 60px;
             height: 60px;
             background: transparent;
@@ -366,14 +375,6 @@
             color: #ffffff;
             transition: all 0.3s ease;
             z-index: 300;
-        }
-        
-        .music-toggle {
-            top: 14px;
-        }
-
-        .sfx-toggle {
-            top: 70px;
         }
         
         .music-toggle:hover,
@@ -693,15 +694,15 @@
         <button class="wipe-button" id="wipeButton" title="Erase local saved data" style="display: none;">Wipe</button>
     </div>
     
-    <!-- Music Toggle Button -->
-    <div class="music-toggle" id="musicToggle" title="Toggle Music">
-        <img class="music-icon" id="musicIcon" src="sound-on.png" alt="Music On" />
+    <!-- Audio Toggle Buttons -->
+    <div class="audio-controls" aria-label="Audio Toggles">
+        <div class="music-toggle" id="musicToggle" title="Toggle Music">
+            <img class="music-icon" id="musicIcon" src="sound-on.png" alt="Music On" />
+        </div>
+        <div class="sfx-toggle" id="sfxToggle" title="Toggle Sound Effects" aria-pressed="true">
+            <img class="sfx-icon" id="sfxIcon" src="sound-fx-on.png" alt="Sound Effects On" />
+        </div>
     </div>
-      
-      <!-- Sound Effects Toggle Button -->
-      <div class="sfx-toggle" id="sfxToggle" title="Toggle Sound Effects" aria-pressed="true">
-          <img class="sfx-icon" id="sfxIcon" src="sound-fx-on.png" alt="Sound Effects On" />
-      </div>
     
     <!-- Quit Button for Pause Menu -->
     <button type="button" class="quit-button" id="quitButton" title="Return to Lobby">Back to Lobby</button>
