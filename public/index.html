@@ -1798,7 +1798,8 @@
 
         // Shape renderer utility
         class ShapeRenderer {
-            static drawShape(ctx, x, y, type, size, fillColor, strokeColor) {
+            static drawShape(ctx, x, y, type, size, fillColor, strokeColor, options = {}) {
+                const { killerGlowAlpha } = options || {};
                 ctx.save();
                 ctx.fillStyle = fillColor;
                 ctx.strokeStyle = strokeColor;
@@ -1818,7 +1819,11 @@
             } else if (type === 'triangle' || type === 'killer_triangle') {
                 const isKiller = type === 'killer_triangle';
                 if (isKiller) {
-                    ctx.shadowColor = 'rgba(255, 56, 72, 0.75)';
+                    const fallbackAlpha = 0.75 * 0.5;
+                    const alpha = typeof killerGlowAlpha === 'number'
+                        ? Math.max(0, Math.min(1, killerGlowAlpha))
+                        : fallbackAlpha;
+                    ctx.shadowColor = `rgba(255, 56, 72, ${alpha})`;
                     ctx.shadowBlur = size * 1.6;
                     ctx.lineWidth = 3;
                 } else {
@@ -3379,15 +3384,25 @@
                     color = this.damageFlash > 0 ? '#ffffff' : this.fillColor;
                     stroke = this.damageFlash > 0 ? '#ffffff' : this.strokeColor;
                 }
-                ShapeRenderer.drawShape(ctx, this.x, this.y, this.type, this.radius, color, stroke);
+                const glowPulse = this.glowColor ? (this.glowPulse || 0) : 0;
+                const isKillerTriangle = this.type === 'killer_triangle';
+                const killerBlinkFactor = isKillerTriangle ? Math.max(0, Math.sin(glowPulse * 3.2)) : 1;
+                const killerShadowAlpha = isKillerTriangle ? 0.375 * killerBlinkFactor : undefined;
+                ShapeRenderer.drawShape(ctx, this.x, this.y, this.type, this.radius, color, stroke, {
+                    killerGlowAlpha: killerShadowAlpha
+                });
                 if (this.glowColor && this.type !== 'super_octagon') {
                     ctx.save();
                     ctx.globalCompositeOperation = 'lighter';
-                    const basePulse = 0.35 + 0.25 * Math.sin((this.glowPulse || 0) * 1.8);
+                    const basePulse = 0.35 + 0.25 * Math.sin(glowPulse * 1.8);
                     const damageBoost = this.damageFlash > 0 ? 0.25 : 0;
-                    ctx.globalAlpha = Math.max(0, Math.min(1, basePulse + damageBoost));
+                    let glowAlpha = Math.max(0, Math.min(1, basePulse + damageBoost));
+                    if (isKillerTriangle) {
+                        glowAlpha = Math.max(0, Math.min(1, (basePulse + damageBoost) * 0.5 * killerBlinkFactor));
+                    }
+                    ctx.globalAlpha = glowAlpha;
                     ctx.fillStyle = this.glowColor;
-                    const radiusMul = 1.5 + 0.15 * Math.sin((this.glowPulse || 0) * 2.6);
+                    const radiusMul = 1.5 + 0.15 * Math.sin(glowPulse * 2.6);
                     ctx.beginPath();
                     ctx.arc(this.x, this.y, this.radius * radiusMul, 0, Math.PI * 2);
                     ctx.fill();
@@ -6705,6 +6720,57 @@
                     const dy = this.player.y - enemy.y;
                     if ((dx * dx + dy * dy) <= radius * radius) {
                         this.player.takeDamage(damage, enemy.x, enemy.y, this.effects, this.audio);
+                    }
+                }
+                const radiusSq = radius * radius;
+                const now = Date.now();
+                for (let i = this.enemies.length - 1; i >= 0; i--) {
+                    const target = this.enemies[i];
+                    if (!target || target === enemy || target.health <= 0) continue;
+                    const targetRadius = typeof target.radius === 'number' ? target.radius : 0;
+                    if (Math.abs(target.x - enemy.x) > radius + targetRadius || Math.abs(target.y - enemy.y) > radius + targetRadius) continue;
+                    const dxEnemy = target.x - enemy.x;
+                    const dyEnemy = target.y - enemy.y;
+                    if ((dxEnemy * dxEnemy + dyEnemy * dyEnemy) > radiusSq) continue;
+                    if ((target.spawnShieldUntil && now < target.spawnShieldUntil) || ((target.type === 'rhombus' || target.type === 'rhombus_boss') && target.invulnerable)) continue;
+                    const alive = target.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
+                        damageType: 'killer_triangle_explosion',
+                        impactX: enemy.x,
+                        impactY: enemy.y
+                    });
+                    if (!alive) {
+                        this.handleEnemyKilled(target, {
+                            cause: 'killer_triangle_explosion',
+                            impactX: enemy.x,
+                            impactY: enemy.y,
+                            explosionRadius: radius,
+                            explosionDamage: damage
+                        });
+                        const last = this.enemies.length - 1;
+                        if (i <= last && this.enemies[i] === target) {
+                            if (i !== last) {
+                                this.enemies[i] = this.enemies[last];
+                            }
+                            this.enemies.pop();
+                        } else {
+                            const idx = this.enemies.indexOf(target);
+                            if (idx !== -1) {
+                                const lastIdx = this.enemies.length - 1;
+                                if (idx !== lastIdx) {
+                                    this.enemies[idx] = this.enemies[lastIdx];
+                                }
+                                this.enemies.pop();
+                            }
+                        }
+                        if (this.inBossPhase && target.type && (ENEMY_TYPES[target.type]?.isBoss || ENEMY_TYPES[target.type]?.role === 'boss')) {
+                            this.onBossDefeated();
+                        }
+                        const points = typeof target.points === 'number' ? target.points : 0;
+                        this.score += points;
+                        if (this.uiManager && typeof this.uiManager.showScoreAddition === 'function') {
+                            this.uiManager.showScoreAddition(points);
+                        }
+                        this.enemiesKilled++;
                     }
                 }
             }
