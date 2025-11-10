@@ -18,6 +18,7 @@
             Level_UP: { file: 'level-up.wav', loop: false },
             UpgradeSelected: { file: 'level-up.wav', loop: false },
             BossAlertSound: { file: 'boss-alert.wav', loop: true },
+            killerTriangleDie: { file: 'killer-triangle-die.wav', loop: false },
             playerDamage: { file: 'player-damage.wav', loop: false },
             bulletShoot: { file: 'bullet-shoot.wav', loop: false },
             railgunShoot: { file: 'railgun-shoot.wav', loop: false },

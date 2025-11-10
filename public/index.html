@@ -1815,13 +1815,30 @@
                     }
                     ctx.fillRect(x - s/2, y - s/2, s, s);
                     ctx.strokeRect(x - s/2, y - s/2, s, s);
-                } else if (type === 'triangle') {
+            } else if (type === 'triangle' || type === 'killer_triangle') {
+                const isKiller = type === 'killer_triangle';
+                if (isKiller) {
+                    ctx.shadowColor = 'rgba(255, 56, 72, 0.75)';
+                    ctx.shadowBlur = size * 1.6;
+                    ctx.lineWidth = 3;
+                } else {
+                    ctx.shadowColor = 'transparent';
+                    ctx.shadowBlur = 0;
+                    ctx.lineWidth = 2;
+                }
                     ctx.beginPath();
                     const h = size * 1.5;
                     ctx.moveTo(x, y - h);
                     ctx.lineTo(x - h * 0.866, y + h * 0.5);
                     ctx.lineTo(x + h * 0.866, y + h * 0.5);
                     ctx.closePath();
+                if (isKiller) {
+                    const gradient = ctx.createLinearGradient(x, y - h, x, y + h);
+                    gradient.addColorStop(0, '#ff5f78');
+                    gradient.addColorStop(1, ctx.fillStyle || '#ff2448');
+                    ctx.fillStyle = gradient;
+                    ctx.strokeStyle = ctx.strokeStyle || '#ff889a';
+                }
                     ctx.fill();
                     ctx.stroke();
                 } else if (type === 'rhombus' || type === 'rhombus_boss') {
@@ -2095,6 +2112,105 @@
                 }));
             }
 
+            createKillerTriangleDetonation(x, y, maxRadius) {
+                const radius = Math.max(40, maxRadius || 300);
+                const totalLife = 48;
+                this.effects.push(new Effect('killerTriangleNova', x, y, {
+                    maxRadius: radius,
+                    innerRadius: 0,
+                    outerRadius: 0,
+                    life: totalLife,
+                    maxLife: totalLife,
+                    typeSpecificUpdate: function() {
+                        const t = getTimeScale();
+                        this.life -= t;
+                        const progress = 1 - (this.life / this.maxLife);
+                        const eased = 1 - Math.pow(1 - progress, 2);
+                        this.outerRadius = this.maxRadius * Math.min(1, 0.15 + eased * 0.95);
+                        this.innerRadius = this.outerRadius * Math.min(0.85, eased * 0.55);
+                        this.opacity = Math.max(0, 1 - progress * 0.8);
+                        return this.life > 0;
+                    },
+                    typeSpecificDraw: function(ctx) {
+                        if (!ctx) return;
+                        ctx.save();
+                        ctx.globalAlpha = Math.max(0, Math.min(1, this.opacity));
+                        const gradient = ctx.createRadialGradient(
+                            this.x, this.y, this.innerRadius || 0,
+                            this.x, this.y, this.outerRadius || this.maxRadius
+                        );
+                        gradient.addColorStop(0, 'rgba(255, 105, 132, 0.55)');
+                        gradient.addColorStop(0.55, 'rgba(255, 50, 70, 0.35)');
+                        gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                        ctx.fillStyle = gradient;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, this.outerRadius || this.maxRadius, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                }));
+                this.effects.push(new Effect('killerTriangleShockwave', x, y, {
+                    maxRadius: radius,
+                    radius: 0,
+                    life: totalLife,
+                    maxLife: totalLife,
+                    typeSpecificUpdate: function() {
+                        const t = getTimeScale();
+                        this.life -= t;
+                        const progress = 1 - (this.life / this.maxLife);
+                        this.radius = this.maxRadius * Math.pow(Math.min(1, progress), 0.92);
+                        this.lineWidth = 6 - 3.5 * progress;
+                        this.opacity = Math.max(0, 0.95 - progress * 0.65);
+                        return this.life > 0;
+                    },
+                    typeSpecificDraw: function(ctx) {
+                        if (!ctx) return;
+                        ctx.save();
+                        ctx.globalAlpha = Math.max(0, Math.min(1, this.opacity));
+                        ctx.strokeStyle = '#ff4664';
+                        ctx.lineWidth = Math.max(1.5, this.lineWidth || 3);
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, this.radius || 0, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }));
+                for (let i = 0; i < 18; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 3.6 + Math.random() * 3.4;
+                    this.effects.push(new Effect('killerTriangleShard', x, y, {
+                        size: 4 + Math.random() * 3,
+                        maxSize: 4 + Math.random() * 3,
+                        color: '#ff3b58',
+                        dx: Math.cos(angle) * speed,
+                        dy: Math.sin(angle) * speed,
+                        life: 32,
+                        maxLife: 32,
+                        typeSpecificUpdate: function() {
+                            const motion = getMotionScale();
+                            const t = getTimeScale();
+                            this.x += this.dx * motion;
+                            this.y += this.dy * motion;
+                            this.dx *= Math.pow(0.92, t);
+                            this.dy *= Math.pow(0.92, t);
+                            this.life -= t;
+                            this.opacity = Math.max(0, this.life / this.maxLife);
+                            this.size = this.maxSize * Math.pow(0.97, this.maxLife - this.life);
+                            return this.life > 0;
+                        },
+                        typeSpecificDraw: function(ctx) {
+                            ctx.save();
+                            ctx.globalAlpha = Math.max(0, this.opacity);
+                            ctx.fillStyle = this.color;
+                            ctx.beginPath();
+                            ctx.arc(this.x, this.y, Math.max(0.5, this.size), 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.restore();
+                        }
+                    }));
+                }
+            }
+
             createSnakeAppleBlast(x, y, maxRadius) {
                 const radius = Math.max(20, maxRadius || 100);
                 this.effects.push(new Effect('snakeAppleBlast', x, y, {
@@ -2316,23 +2432,47 @@
                 }
             }
 
-            createTriangleTrail(x, y, size, opacity, fillColor) {
+            createTriangleTrail(x, y, size, opacity, fillColor, options = {}) {
+                const life = Math.max(1, Math.floor(options.life || 60));
+                const shrinkFactor = typeof options.shrinkFactor === 'number' ? options.shrinkFactor : 0.98;
+                const fadeExponent = typeof options.fadeExponent === 'number' ? options.fadeExponent : 1;
+                const glowColor = options.glowColor || null;
+                const glowOpacity = typeof options.glowOpacity === 'number' ? Math.max(0, Math.min(1, options.glowOpacity)) : 0.45;
                 this.effects.push(new Effect('triangleTrail', x, y, {
+                    baseSize: size,
                     size,
+                    baseOpacity: opacity,
                     opacity,
                     fillColor,
-                    life: 60,
-                    maxLife: 60,
+                    life,
+                    maxLife: life,
+                    shrinkFactor,
+                    fadeExponent,
+                    glowColor,
+                    glowOpacity,
                     typeSpecificUpdate: function() {
                         const t = getTimeScale();
                         this.life -= t;
-                        this.opacity = this.opacity * (this.life / this.maxLife);
-                        this.size *= Math.pow(0.98, t);
+                        const normalized = Math.max(0, this.life / this.maxLife);
+                        this.opacity = this.baseOpacity * Math.pow(normalized, this.fadeExponent);
+                        const elapsed = this.maxLife - this.life;
+                        this.size = this.baseSize * Math.pow(this.shrinkFactor, elapsed);
                         return this.life > 0;
                     },
                     typeSpecificDraw: function(ctx) {
+                        if (!ctx) return;
                         ctx.save();
-                        ctx.globalAlpha = this.opacity;
+                        if (this.glowColor) {
+                            const alpha = Math.max(0, Math.min(1, this.opacity * this.glowOpacity));
+                            if (alpha > 0.001) {
+                                ctx.globalAlpha = alpha;
+                                ctx.fillStyle = this.glowColor;
+                                ctx.beginPath();
+                                ctx.arc(this.x, this.y, this.size * 1.35, 0, Math.PI * 2);
+                                ctx.fill();
+                            }
+                        }
+                        ctx.globalAlpha = Math.max(0, Math.min(1, this.opacity));
                         ctx.fillStyle = this.fillColor;
                         ctx.beginPath();
                         const h = this.size * 1.5;
@@ -2830,6 +2970,13 @@
                     glowColor: config.enemyBulletGlowColor
                 };
                 this.lastTrailTime = 0;
+                this.deathSound = config.deathSound || 'enemyDeath';
+                this.explosionRadius = config.explosionRadius || 0;
+                this.explosionDamage = config.explosionDamage || 0;
+                this.trailIntervalMs = config.trailIntervalMs || null;
+                this.trailLife = config.trailLife || null;
+                this.trailShrinkFactor = config.trailShrinkFactor || null;
+                this.trailFadeExponent = config.trailFadeExponent || null;
                 this.spawnShieldUntil = 0;
                 this.superShieldActive = type === 'super_octagon';
                 this.shieldRadiusOffset = config.shieldRadiusOffset != null ? config.shieldRadiusOffset : 0;
@@ -2837,7 +2984,7 @@
                 this.shieldLineColor = config.shieldLineColor || null;
                 this.glowColor = config.glowColor || null;
                 this.shieldPulse = 0;
-                this.glowPulse = 0;
+                this.glowPulse = (this.glowColor && type !== 'super_octagon') ? Math.random() * Math.PI * 2 : 0;
                 if (this.type === 'super_octagon') {
                     if (!this.shieldRadiusOffset) this.shieldRadiusOffset = Math.max(24, this.radius * 0.3);
                     if (!this.shieldColor) this.shieldColor = 'rgba(255, 160, 0, 0.18)';
@@ -2865,6 +3012,29 @@
                     this.orbitSpeed = 0.02 + Math.random() * 0.02;
                     this.approachSpeed = 0.8;
                 }
+                if (type === 'killer_triangle') {
+                    this.behaviorState = 'orbit';
+                    this.killerOrbitDurationBase = config.orbitDurationFrames || 150;
+                    this.killerOrbitDurationRange = config.orbitDurationRange || 120;
+                    this.killerDashDurationFrames = config.dashDurationFrames || 70;
+                    this.killerDashSpeedMultiplier = config.dashSpeedMultiplier || 1.7;
+                    this.killerOrbitRadiusMin = config.orbitRadiusMin || Math.max(this.radius * 4, 120);
+                    this.killerOrbitRadiusMax = Math.max(this.killerOrbitRadiusMin + 20, config.orbitRadiusMax || Math.max(this.radius * 8, 240));
+                    this.killerOrbitAngularMin = config.orbitAngularSpeedMin || 0.018;
+                    this.killerOrbitAngularMax = config.orbitAngularSpeedMax || 0.032;
+                    this.killerWobbleStrength = config.wobbleStrength || 0.55;
+                    this.behaviorTimerMax = this.killerOrbitDurationBase + Math.random() * this.killerOrbitDurationRange;
+                    this.behaviorTimer = this.behaviorTimerMax;
+                    this.orbitAngle = Math.random() * Math.PI * 2;
+                    this.orbitDirection = Math.random() < 0.5 ? -1 : 1;
+                    this.orbitAngularSpeed = this.killerOrbitAngularMin + Math.random() * (this.killerOrbitAngularMax - this.killerOrbitAngularMin);
+                    this.orbitRadius = this.killerOrbitRadiusMin + Math.random() * Math.max(1, this.killerOrbitRadiusMax - this.killerOrbitRadiusMin);
+                    this.wobblePhase = Math.random() * Math.PI * 2;
+                    if (!this.trailIntervalMs) this.trailIntervalMs = 35;
+                    if (!this.trailLife) this.trailLife = 100;
+                    if (!this.trailShrinkFactor) this.trailShrinkFactor = 0.985;
+                    if (!this.trailFadeExponent) this.trailFadeExponent = 1.15;
+                }
                 if (type === 'dash_square') {
                     this.dashCooldownMs = config.dashCooldownMs || 2000;
                     this.dashDistance = config.dashDistance || 70;
@@ -2887,6 +3057,10 @@
                 const t = getTimeScale();
                 const now = Date.now();
                 if (this.damageFlash > 0) this.damageFlash -= t;
+                if (this.glowColor && this.type !== 'super_octagon') {
+                    const glowStep = 0.062 * t;
+                    this.glowPulse = ((this.glowPulse || 0) + glowStep) % (Math.PI * 2);
+                }
                 if (this.type === 'super_octagon') {
                     const shieldStep = 0.08 * t;
                     const glowStep = 0.05 * t;
@@ -2913,6 +3087,8 @@
                     const desiredDist = Math.sqrt(desiredDx * desiredDx + desiredDy * desiredDy) || 0.1;
                     this.x += (desiredDx / desiredDist) * this.speed * this.approachSpeed * motion;
                     this.y += (desiredDy / desiredDist) * this.speed * this.approachSpeed * motion;
+                } else if (this.type === 'killer_triangle') {
+                    this.updateKillerTriangleMovement(player, motion, t, dx, dy, dist);
                 } else {
                     let moveX = (dx / dist) * this.speed * motion;
                     let moveY = (dy / dist) * this.speed * motion;
@@ -2969,6 +3145,36 @@
                         }
                         this.lastTrailTime = now;
                     }
+                } else if (this.type === 'killer_triangle') {
+                    const intervalMs = this.trailIntervalMs != null ? this.trailIntervalMs : 35;
+                    if (now - this.lastTrailTime >= intervalMs / Math.max(0.001, t)) {
+                        const baseSize = this.radius;
+                        const life = this.trailLife || 100;
+                        const shrinkFactor = this.trailShrinkFactor || 0.985;
+                        const fadeExponentBase = this.trailFadeExponent || 1.15;
+                        const glowColor = this.glowColor || 'rgba(255, 52, 76, 0.6)';
+                        for (let i = 0; i < 6; i++) {
+                            const size = baseSize * Math.pow(0.78, i);
+                            const opacity = Math.max(0.1, 0.75 - i * 0.08);
+                            const fadeExponent = fadeExponentBase + i * 0.1;
+                            const glowOpacity = Math.max(0.05, 0.65 - i * 0.08);
+                            effects.createTriangleTrail(
+                                this.x,
+                                this.y,
+                                size,
+                                opacity,
+                                this.fillColor,
+                                {
+                                    life,
+                                    shrinkFactor,
+                                    fadeExponent,
+                                    glowColor,
+                                    glowOpacity
+                                }
+                            );
+                        }
+                        this.lastTrailTime = now;
+                    }
                 }
                 // Boss periodic triangle spawns
                 if (this.isBoss && this.bossTriangleSpawnIntervalMs > 0) {
@@ -2994,6 +3200,69 @@
                     }
                 }
                 return dist;
+            }
+
+            updateKillerTriangleMovement(player, motion, t, dx, dy, dist) {
+                const step = Math.max(0.001, t);
+                let effectiveDist = dist;
+                if (!isFinite(effectiveDist) || effectiveDist < 0.001) {
+                    effectiveDist = 0.001;
+                }
+                if (!this.behaviorState) {
+                    this.behaviorState = 'orbit';
+                    this.behaviorTimerMax = this.killerOrbitDurationBase + Math.random() * this.killerOrbitDurationRange;
+                    this.behaviorTimer = this.behaviorTimerMax;
+                    this.orbitAngle = Math.random() * Math.PI * 2;
+                    this.orbitDirection = Math.random() < 0.5 ? -1 : 1;
+                    this.orbitAngularSpeed = this.killerOrbitAngularMin + Math.random() * (this.killerOrbitAngularMax - this.killerOrbitAngularMin);
+                    this.orbitRadius = this.killerOrbitRadiusMin + Math.random() * Math.max(1, this.killerOrbitRadiusMax - this.killerOrbitRadiusMin);
+                    this.wobblePhase = Math.random() * Math.PI * 2;
+                }
+                if (this.behaviorState === 'orbit') {
+                    this.behaviorTimer -= step;
+                    const targetRadius = Math.max(
+                        this.killerOrbitRadiusMin,
+                        Math.min(this.killerOrbitRadiusMax, effectiveDist * 0.85 + 80)
+                    );
+                    if (!isFinite(this.orbitRadius)) this.orbitRadius = targetRadius;
+                    this.orbitRadius += (targetRadius - this.orbitRadius) * 0.08 * step;
+                    this.orbitAngularSpeed = Math.min(
+                        this.killerOrbitAngularMax,
+                        Math.max(this.killerOrbitAngularMin, this.orbitAngularSpeed)
+                    );
+                    this.orbitAngle += this.orbitAngularSpeed * this.orbitDirection * step;
+                    const desiredX = player.x + Math.cos(this.orbitAngle) * this.orbitRadius;
+                    const desiredY = player.y + Math.sin(this.orbitAngle) * this.orbitRadius;
+                    const ddx = desiredX - this.x;
+                    const ddy = desiredY - this.y;
+                    const len = Math.sqrt(ddx * ddx + ddy * ddy) || 1;
+                    const baseSpeed = this.speed * 0.9;
+                    this.x += (ddx / len) * baseSpeed * motion;
+                    this.y += (ddy / len) * baseSpeed * motion;
+                    if (this.behaviorTimer <= 0) {
+                        this.behaviorState = 'dive';
+                        this.behaviorTimerMax = this.killerDashDurationFrames;
+                        this.behaviorTimer = this.killerDashDurationFrames;
+                        this.wobblePhase = Math.random() * Math.PI * 2;
+                    }
+                } else {
+                    this.behaviorTimer -= step;
+                    const progress = this.behaviorTimerMax > 0 ? 1 - (this.behaviorTimer / this.behaviorTimerMax) : 1;
+                    const wobble = Math.sin((this.wobblePhase || 0) + progress * Math.PI * 2) * this.killerWobbleStrength;
+                    const angle = Math.atan2(dy, dx) + wobble;
+                    const dirX = Math.cos(angle);
+                    const dirY = Math.sin(angle);
+                    const speedMul = this.killerDashSpeedMultiplier || 1.6;
+                    this.x += dirX * this.speed * speedMul * motion;
+                    this.y += dirY * this.speed * speedMul * motion;
+                    if (this.behaviorTimer <= 0 || effectiveDist < this.radius * 1.8) {
+                        this.behaviorState = 'orbit';
+                        this.behaviorTimerMax = this.killerOrbitDurationBase + Math.random() * this.killerOrbitDurationRange;
+                        this.behaviorTimer = this.behaviorTimerMax;
+                        this.orbitDirection = (Math.random() < 0.5 ? -1 : 1);
+                        this.orbitAngle = Math.atan2(this.y - player.y, this.x - player.x);
+                    }
+                }
             }
 
             shoot(player, enemyBullets, audio) {
@@ -3062,7 +3331,7 @@
                     effects.createDamageLabel(this.x, this.y - this.radius - 30, damage, false);
                 }
                 if (this.health <= 0) {
-                    if (audio) audio.playSound('enemyDeath');
+                    if (audio) audio.playSound(this.deathSound || 'enemyDeath');
                     return false;
                 } else {
                     if (audio) {
@@ -3111,6 +3380,19 @@
                     stroke = this.damageFlash > 0 ? '#ffffff' : this.strokeColor;
                 }
                 ShapeRenderer.drawShape(ctx, this.x, this.y, this.type, this.radius, color, stroke);
+                if (this.glowColor && this.type !== 'super_octagon') {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    const basePulse = 0.35 + 0.25 * Math.sin((this.glowPulse || 0) * 1.8);
+                    const damageBoost = this.damageFlash > 0 ? 0.25 : 0;
+                    ctx.globalAlpha = Math.max(0, Math.min(1, basePulse + damageBoost));
+                    ctx.fillStyle = this.glowColor;
+                    const radiusMul = 1.5 + 0.15 * Math.sin((this.glowPulse || 0) * 2.6);
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius * radiusMul, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
                 if (isSuper && shieldRadius != null) {
                     ctx.save();
                     const damageBoost = this.damageFlash > 0 ? 0.2 : 0;
@@ -6404,6 +6686,42 @@
                 if (this.audio) this.audio.playSound('MinionSummon');
             }
 
+            triggerKillerTriangleDeath(enemy, options = {}) {
+                if (!enemy) return;
+                const config = ENEMY_TYPES[enemy.type] || ENEMY_TYPES['killer_triangle'] || {};
+                const radius = options.explosionRadius || enemy.explosionRadius || config.explosionRadius || 300;
+                const damage = options.explosionDamage || enemy.explosionDamage || config.explosionDamage || 50;
+                if (this.effects) {
+                    if (typeof this.effects.createKillerTriangleDetonation === 'function') {
+                        this.effects.createKillerTriangleDetonation(enemy.x, enemy.y, radius);
+                    }
+                    this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
+                }
+                if (typeof this.shakeCanvas === 'function') {
+                    this.shakeCanvas(8, 280);
+                }
+                if (this.player) {
+                    const dx = this.player.x - enemy.x;
+                    const dy = this.player.y - enemy.y;
+                    if ((dx * dx + dy * dy) <= radius * radius) {
+                        this.player.takeDamage(damage, enemy.x, enemy.y, this.effects, this.audio);
+                    }
+                }
+            }
+
+            handleEnemyKilled(enemy, options = {}) {
+                if (!enemy) return;
+                if (enemy.type === 'killer_triangle') {
+                    this.triggerKillerTriangleDeath(enemy, options);
+                } else if (this.effects) {
+                    this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
+                }
+                if (enemy.type === 'rhombus') {
+                    this.spawnTrianglesAround(enemy.x, enemy.y, enemy);
+                }
+                this.maybeSpawnXpReward(enemy);
+            }
+
             shouldSuppressXpDropForEnemy(enemy) {
                 if (!enemy) return false;
                 if (!(this.inBossPhase && this.activeBoss && this.activeBoss.type === 'rhombus_boss')) {
@@ -6447,6 +6765,7 @@
                     square: Math.max(0, baseCubes - dashSquares),
                     dash_square: dashSquares,
                     triangle: Math.max(0, waveConfig.enemies.triangles || 0),
+                    killer_triangle: Math.max(0, waveConfig.enemies.killerTriangles || 0),
                     octagon: Math.max(0, waveConfig.enemies.octagons || 0),
                     super_octagon: Math.max(0, waveConfig.enemies.superOctagons || 0),
                     rhombus: Math.max(0, waveConfig.enemies.rhombuses || 0)
@@ -6593,11 +6912,7 @@
                                         impactX: r.x,
                                         impactY: r.y
                                     })) {
-                                        this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                        this.maybeSpawnXpReward(enemy);
-                                        if (enemy.type === 'rhombus') {
-                                            // special rhombus death handled elsewhere if needed
-                                        }
+                                        this.handleEnemyKilled(enemy, { cause: 'rocket', impactX: r.x, impactY: r.y });
                                     }
                                 }
                               }
@@ -6660,11 +6975,7 @@
                                         impactX: m.x,
                                         impactY: m.y
                                     })) {
-                                        this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                        this.maybeSpawnXpReward(enemy);
-                                        if (enemy.type === 'rhombus') {
-                                            // special rhombus death handled elsewhere if needed
-                                        }
+                                        this.handleEnemyKilled(enemy, { cause: 'mine', impactX: m.x, impactY: m.y });
                                     }
                                 }
                             }
@@ -6735,27 +7046,23 @@
                                 if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
                                 if (ddx*ddx + ddy*ddy <= combinedRadius * combinedRadius) {
                                     if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
-                                    if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
-                                        damageType: 'rocket',
-                                        impactX: ex,
-                                        impactY: ey
-                                    })) {
-                                        this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                        this.maybeSpawnXpReward(en);
-                                        if (en.type === 'rhombus') {
-                                            this.spawnTrianglesAround(en.x, en.y, en);
-                                        }
-                                        // swap-remove enemy
-                                        const last = this.enemies.length - 1;
-                                        this.enemies[ej] = this.enemies[last];
-                                        this.enemies.pop();
-                                        if (this.inBossPhase && en.type && (ENEMY_TYPES[en.type]?.isBoss || ENEMY_TYPES[en.type]?.role === 'boss')) {
-                                            this.onBossDefeated();
-                                        }
-                                        this.score += en.points;
-                                        this.enemiesKilled++;
-                                        this.uiManager.showScoreAddition(en.points);
-                                    }
+                                  if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
+                                      damageType: 'rocket',
+                                      impactX: ex,
+                                      impactY: ey
+                                  })) {
+                                      this.handleEnemyKilled(en, { cause: 'rocket', impactX: ex, impactY: ey });
+                                      // swap-remove enemy
+                                      const last = this.enemies.length - 1;
+                                      this.enemies[ej] = this.enemies[last];
+                                      this.enemies.pop();
+                                      if (this.inBossPhase && en.type && (ENEMY_TYPES[en.type]?.isBoss || ENEMY_TYPES[en.type]?.role === 'boss')) {
+                                          this.onBossDefeated();
+                                      }
+                                      this.score += en.points;
+                                      this.enemiesKilled++;
+                                      this.uiManager.showScoreAddition(en.points);
+                                  }
                                 }
                             }
                             // AoE onto Tetris Cross boss pieces
@@ -6808,26 +7115,22 @@
                                         if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
                                         if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
                                           if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
-                                          if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
-                                              damageType: 'rocket',
-                                              impactX: ex,
-                                              impactY: ey
-                                          })) {
-                                            this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                            this.maybeSpawnXpReward(en);
-                                              if (en.type === 'rhombus') {
-                                                this.spawnTrianglesAround(en.x, en.y, en);
-                                              }
-                                              const last = this.enemies.length - 1;
-                                              this.enemies[ej] = this.enemies[last];
-                                              this.enemies.pop();
-                                              if (this.inBossPhase && en.type && (ENEMY_TYPES[en.type]?.isBoss || ENEMY_TYPES[en.type]?.role === 'boss')) {
-                                                  this.onBossDefeated();
-                                              }
-                                              this.score += en.points;
-                                              this.enemiesKilled++;
-                                              this.uiManager.showScoreAddition(en.points);
-                                          }
+                                        if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
+                                            damageType: 'rocket',
+                                            impactX: ex,
+                                            impactY: ey
+                                        })) {
+                                            this.handleEnemyKilled(en, { cause: 'rocket', impactX: ex, impactY: ey });
+                                            const last = this.enemies.length - 1;
+                                            this.enemies[ej] = this.enemies[last];
+                                            this.enemies.pop();
+                                            if (this.inBossPhase && en.type && (ENEMY_TYPES[en.type]?.isBoss || ENEMY_TYPES[en.type]?.role === 'boss')) {
+                                                this.onBossDefeated();
+                                            }
+                                            this.score += en.points;
+                                            this.enemiesKilled++;
+                                            this.uiManager.showScoreAddition(en.points);
+                                        }
                                       }
                                   }
                                   if (this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
@@ -6867,27 +7170,23 @@
                                 if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
                                 if (ddx*ddx + ddy*ddy <= combinedRadius * combinedRadius) {
                                     if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
-                                    if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
-                                        damageType: 'mine',
-                                        impactX: ex,
-                                        impactY: ey
-                                    })) {
-                                        this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                        this.maybeSpawnXpReward(en);
-                                        if (en.type === 'rhombus') {
-                                            this.spawnTrianglesAround(en.x, en.y, en);
-                                        }
-                                        // swap-remove enemy
-                                        const last = this.enemies.length - 1;
-                                        this.enemies[ej] = this.enemies[last];
-                                        this.enemies.pop();
-                                        if (this.inBossPhase && en.type && (ENEMY_TYPES[en.type]?.isBoss || ENEMY_TYPES[en.type]?.role === 'boss')) {
-                                            this.onBossDefeated();
-                                        }
-                                        this.score += en.points;
-                                        this.enemiesKilled++;
-                                        this.uiManager.showScoreAddition(en.points);
-                                    }
+                                      if (!en.takeDamage(exploded.damage, this.effects, this.score, this.ctx, this.audio, {
+                                          damageType: 'mine',
+                                          impactX: ex,
+                                          impactY: ey
+                                      })) {
+                                          this.handleEnemyKilled(en, { cause: 'mine', impactX: ex, impactY: ey });
+                                          // swap-remove enemy
+                                          const last = this.enemies.length - 1;
+                                          this.enemies[ej] = this.enemies[last];
+                                          this.enemies.pop();
+                                          if (this.inBossPhase && en.type && (ENEMY_TYPES[en.type]?.isBoss || ENEMY_TYPES[en.type]?.role === 'boss')) {
+                                              this.onBossDefeated();
+                                          }
+                                          this.score += en.points;
+                                          this.enemiesKilled++;
+                                          this.uiManager.showScoreAddition(en.points);
+                                      }
                                 }
                             }
                               if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
@@ -6929,21 +7228,17 @@
                                             impactX: ex,
                                             impactY: ey
                                         })) {
-                                            this.effects.createExplosion(en.x, en.y, en.type, en.radius);
-                                            this.maybeSpawnXpReward(en);
-                                            if (en.type === 'rhombus') {
-                                                this.spawnTrianglesAround(en.x, en.y, en);
+                                            this.handleEnemyKilled(en, { cause: 'mine', impactX: ex, impactY: ey });
+                                            const last = this.enemies.length - 1;
+                                            this.enemies[ej] = this.enemies[last];
+                                            this.enemies.pop();
+                                            if (this.inBossPhase && en.type && (ENEMY_TYPES[en.type]?.isBoss || ENEMY_TYPES[en.type]?.role === 'boss')) {
+                                                this.onBossDefeated();
                                             }
-                                              const last = this.enemies.length - 1;
-                                              this.enemies[ej] = this.enemies[last];
-                                              this.enemies.pop();
-                                              if (this.inBossPhase && en.type && (ENEMY_TYPES[en.type]?.isBoss || ENEMY_TYPES[en.type]?.role === 'boss')) {
-                                                  this.onBossDefeated();
-                                              }
-                                              this.score += en.points;
-                                              this.enemiesKilled++;
-                                              this.uiManager.showScoreAddition(en.points);
-                                          }
+                                            this.score += en.points;
+                                            this.enemiesKilled++;
+                                            this.uiManager.showScoreAddition(en.points);
+                                        }
                                       }
                                   }
                                   if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
@@ -6972,11 +7267,7 @@
 						if (isBoss) {
 							this.player.takeDamage(enemy.damage, (this.player.x + enemy.x) / 2, (this.player.y + enemy.y) / 2, this.effects, this.audio);
 						} else {
-							this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-							this.maybeSpawnXpReward(enemy);
-							if (enemy.type === 'rhombus') {
-								this.spawnTrianglesAround(enemy.x, enemy.y, enemy);
-							}
+							this.handleEnemyKilled(enemy, { cause: 'collision' });
 							this.player.takeDamage(enemy.damage, (this.player.x + enemy.x) / 2, (this.player.y + enemy.y) / 2, this.effects, this.audio);
 							// swap-remove enemy
 							const last = this.enemies.length - 1;
@@ -7008,11 +7299,7 @@
                                     impactX: bullet.x,
                                     impactY: bullet.y
                                 })) {
-                                    this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                    this.maybeSpawnXpReward(enemy);
-                                    if (enemy.type === 'rhombus') {
-                                        this.spawnTrianglesAround(enemy.x, enemy.y, enemy);
-                                    }
+                                    this.handleEnemyKilled(enemy, { cause: 'bullet', impactX: bullet.x, impactY: bullet.y });
                                     // swap-remove enemy
                                     const last = this.enemies.length - 1;
                                     this.enemies[i] = this.enemies[last];
@@ -7043,11 +7330,7 @@
                                     impactY: enemy.y,
                                     ignoreShield: !!effect._isMaxCharge
                                 })) {
-                                    this.effects.createExplosion(enemy.x, enemy.y, enemy.type, enemy.radius);
-                                    this.maybeSpawnXpReward(enemy);
-                                    if (enemy.type === 'rhombus') {
-                                        this.spawnTrianglesAround(enemy.x, enemy.y, enemy);
-                                    }
+                                    this.handleEnemyKilled(enemy, { cause: 'railgun', impactX: enemy.x, impactY: enemy.y });
                                     // swap-remove enemy
                                     const last = this.enemies.length - 1;
                                     this.enemies[i] = this.enemies[last];

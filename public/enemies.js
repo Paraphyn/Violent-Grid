@@ -36,6 +36,35 @@ const ENEMY_TYPES = {
         xp: 15,
         fillColor: '#ff6666',
         strokeColor: '#cc3333'
+      },
+      killer_triangle: {
+          role: 'regular',
+          health: 100,
+          speed: 5,
+          size: 25,
+          points: 25,
+          damage: 50,
+          xp: 25,
+          fillColor: '#ff2448',
+          strokeColor: '#ff7089',
+          glowColor: 'rgba(255, 52, 76, 0.65)',
+          trailIntervalMs: 35,
+          trailLife: 100,
+          trailShrinkFactor: 0.985,
+          trailFadeExponent: 1.15,
+          orbitRadiusMin: 140,
+          orbitRadiusMax: 220,
+          orbitDurationFrames: 150,
+          orbitDurationRange: 120,
+          orbitAngularSpeedMin: 0.018,
+          orbitAngularSpeedMax: 0.032,
+          dashDurationFrames: 70,
+          dashSpeedMultiplier: 1.7,
+          wobbleStrength: 0.55,
+          explosionRadius: 300,
+          explosionDamage: 50,
+          deathSound: 'killerTriangleDie',
+          displayName: 'Killer Triangle'
     },
     octagon: {
         role: 'regular',
@@ -224,19 +253,19 @@ const WAVE_GROUPS = [
     // Group 2 (example: original waves 4-6)
     [
         { enemies: { cubes: 10, dashSquares: 0, triangles: 0, octagons: 0, rhombuses: 3 }, spawnTime: 10000, simultaneousSpawns: 1 },
-        { enemies: { cubes: 0, triangles: 10, octagons: 6, rhombuses: 0, superOctagons: 1 }, spawnTime: 15000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 0, triangles: 10, killerTriangles: 2, octagons: 6, rhombuses: 0, superOctagons: 1 }, spawnTime: 15000, simultaneousSpawns: 1 },
         { enemies: { dashSquares: 10, triangles: 0, octagons: 0, rhombuses: 0 }, spawnTime: 15000, simultaneousSpawns: 1 }
     ],
     // Group 3 (example: original waves 7-9)
     [
         { enemies: { cubes: 5, dashSquares: 5, triangles: 0, octagons: 5, rhombuses: 3 }, spawnTime: 15000, simultaneousSpawns: 1 },
-        { enemies: { cubes: 0, triangles: 12, octagons: 0, rhombuses: 8 }, spawnTime: 25000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 0, triangles: 12, killerTriangles: 3, octagons: 0, rhombuses: 8 }, spawnTime: 25000, simultaneousSpawns: 1 },
         { enemies: { cubes: 0, triangles: 0, octagons: 20, rhombuses: 0, superOctagons: 1 }, spawnTime: 25000, simultaneousSpawns: 1 }
     ],
     // Group 4 (example: original waves 10-12)
     [
-        { enemies: { cubes: 25, dashSquares: 0, triangles: 25, octagons: 0, rhombuses: 0 }, spawnTime: 22000, simultaneousSpawns: 1 },
-        { enemies: { cubes: 0, dashSquares: 20, triangles: 10, octagons: 0, rhombuses: 0, superOctagons: 1 }, spawnTime: 15000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 25, dashSquares: 0, triangles: 25, killerTriangles: 6, octagons: 0, rhombuses: 0 }, spawnTime: 22000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 0, dashSquares: 20, triangles: 10, killerTriangles: 4, octagons: 0, rhombuses: 0, superOctagons: 1 }, spawnTime: 15000, simultaneousSpawns: 1 },
         { enemies: { cubes: 30, triangles: 0, octagons: 0, rhombuses: 0, superOctagons: 3 }, spawnTime: 15000, simultaneousSpawns: 1 }
     ]
 ];
