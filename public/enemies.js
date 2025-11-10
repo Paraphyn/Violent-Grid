@@ -264,8 +264,8 @@ const WAVE_GROUPS = [
     ],
     // Group 4 (example: original waves 10-12)
     [
-        { enemies: { cubes: 25, dashSquares: 0, triangles: 25, killerTriangles: 6, octagons: 0, rhombuses: 0 }, spawnTime: 22000, simultaneousSpawns: 1 },
-        { enemies: { cubes: 0, dashSquares: 20, triangles: 10, killerTriangles: 4, octagons: 0, rhombuses: 0, superOctagons: 1 }, spawnTime: 15000, simultaneousSpawns: 1 },
-        { enemies: { cubes: 30, triangles: 0, octagons: 0, rhombuses: 0, superOctagons: 3 }, spawnTime: 15000, simultaneousSpawns: 1 }
+        { enemies: { cubes: 25, dashSquares: 0, triangles: 25, killerTriangles: 6, octagons: 0, rhombuses: 0 }, spawnTime: 22000, simultaneousSpawns: 2 },
+        { enemies: { cubes: 0, dashSquares: 20, triangles: 10, killerTriangles: 4, octagons: 0, rhombuses: 0, superOctagons: 1 }, spawnTime: 15000, simultaneousSpawns: 2 },
+        { enemies: { cubes: 30, triangles: 0, octagons: 0, rhombuses: 0, superOctagons: 3 }, spawnTime: 15000, simultaneousSpawns: 2 }
     ]
 ];
