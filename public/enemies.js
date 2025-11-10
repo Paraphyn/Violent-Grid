@@ -246,9 +246,9 @@ const USE_WAVE_GROUPS = true;
 const WAVE_GROUPS = [
     // Group 1 (example: original waves 1-3)
     [
-        { enemies: { cubes: 8, triangles: 0, octagons: 0, rhombuses: 0 }, spawnTime: 10000, simultaneousSpawns: 1 },
-        { enemies: { cubes: 0, triangles: 0, octagons: 4, rhombuses: 0 }, spawnTime: 10000, simultaneousSpawns: 1 },
-        { enemies: { cubes: 0, triangles: 10, octagons: 0, rhombuses: 0 }, spawnTime: 10000, simultaneousSpawns: 1 }
+        { enemies: { killerTriangles: 2, cubes: 8, triangles: 0, octagons: 0, rhombuses: 0 }, spawnTime: 10000, simultaneousSpawns: 1 },
+        { enemies: { killerTriangles: 2, cubes: 0, triangles: 0, octagons: 4, rhombuses: 0 }, spawnTime: 10000, simultaneousSpawns: 1 },
+        { enemies: { killerTriangles: 2, cubes: 0, triangles: 10, octagons: 0, rhombuses: 0 }, spawnTime: 10000, simultaneousSpawns: 1 }
     ],
     // Group 2 (example: original waves 4-6)
     [
