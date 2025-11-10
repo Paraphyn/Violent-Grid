@@ -76,7 +76,7 @@ const ENEMY_TYPES = {
         xp: 30,
         fillColor: '#990000',
         strokeColor: '#660000',
-        shootDelay: 3000
+        shootDelay: 2500
     },
     super_octagon: {
         role: 'regular',
