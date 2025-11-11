@@ -2539,7 +2539,10 @@
             }
 
             createExplosion(x, y, type, size) {
-                const config = ENEMY_TYPES[type];
+                const config = ENEMY_TYPES[type] || {};
+                const fallbackType = type || 'square';
+                const fillColor = config.fillColor || '#ff5555';
+                const strokeColor = config.strokeColor || '#cc2222';
                 const count = 3 + Math.floor(Math.random() * 3);
                 for (let i = 0; i < count; i++) {
                     const angle = Math.random() * Math.PI * 2;
@@ -2550,9 +2553,9 @@
                         life: 30 + Math.random() * 20,
                         dx: Math.cos(angle) * speed,
                         dy: Math.sin(angle) * speed,
-                        fillColor: config.fillColor,
-                        strokeColor: config.strokeColor,
-                        shapeType: type,
+                        fillColor,
+                        strokeColor,
+                        shapeType: config.shapeType || fallbackType,
                         typeSpecificUpdate: function() {
                             const motion = getMotionScale();
                             const t = getTimeScale();
@@ -5313,6 +5316,7 @@
                 this.orbitAngle = Math.random() * Math.PI * 2;
                 this.velocity = { x: 0, y: 0 };
                 this.preferredDistance = this.config.preferredDistance || 380;
+                this.preferredDistanceBase = this.preferredDistance;
                 this.preferredDistanceVariance = this.config.preferredDistanceVariance || 80;
                 this.minDistanceFromPlayer = this.config.minDistanceFromPlayer || 320;
                 this.maxDistanceFromPlayer = this.config.maxDistanceFromPlayer || 500;
@@ -5329,12 +5333,13 @@
                 this.contactDamage = this.config.contactDamage || 35;
                 this.bulletDamage = this.config.enemyBulletDamage || 15;
                 this.rocketDamage = this.config.rocketDamage || 25;
+                this.rocketPredictionSpeed = this.config.rocketPredictionSpeed || 7;
                 this.mineDamage = this.config.mineDamage || 25;
                 this.dashDistance = this.config.dashDistance || 280;
                 this.dashState = {
                     active: false,
                     progress: 0,
-                    duration: 12,
+                    duration: this.config.dashDuration || 18,
                     startX: this.x,
                     startY: this.y,
                     endX: this.x,
@@ -5350,10 +5355,21 @@
                 this._lastBulletSoundTime = 0;
                 this._lastPlayerX = game.player ? game.player.x : this.x;
                 this._lastPlayerY = game.player ? game.player.y : this.y;
+                this.distancePulsePhase = Math.random() * Math.PI * 2;
+                const pulseSpeedBase = this.config.distancePulseSpeed || 0.012;
+                this.distancePulseSpeed = pulseSpeedBase * (0.75 + Math.random() * 0.4);
+                const maxDistanceSwing = Math.max(0, this.maxDistanceFromPlayer - this.minDistanceFromPlayer);
+                const defaultAmplitude = this.preferredDistanceVariance || 60;
+                const configuredAmplitude = this.config.distancePulseAmplitude;
+                this.distancePulseAmplitude = Math.min(
+                    maxDistanceSwing * 0.45,
+                    Math.max(20, configuredAmplitude != null ? configuredAmplitude : defaultAmplitude * 0.9)
+                );
+                this._lastPlayerSampleTime = now;
             }
 
             _randomModeDuration() {
-                return 3500 + Math.random() * 2200;
+                return 5200 + Math.random() * 3800;
             }
 
             _randomPreferredRadius() {
@@ -5361,6 +5377,79 @@
                 const randomOffset = (Math.random() - 0.5) * 2 * variance;
                 const radius = this.preferredDistance + randomOffset;
                 return Math.max(this.minDistanceFromPlayer, Math.min(this.maxDistanceFromPlayer, radius));
+            }
+
+            _updateDistancePulse(timeScale) {
+                if (!Number.isFinite(timeScale) || timeScale <= 0) timeScale = 1;
+                this.distancePulsePhase = (this.distancePulsePhase + this.distancePulseSpeed * timeScale) % (Math.PI * 2);
+                const base = this.preferredDistanceBase;
+                const amplitude = this.distancePulseAmplitude;
+                const dynamic = base + Math.sin(this.distancePulsePhase) * amplitude;
+                const clamped = Math.max(this.minDistanceFromPlayer, Math.min(this.maxDistanceFromPlayer, dynamic));
+                this.preferredDistance = clamped;
+                if (typeof this.orbitRadius === 'number') {
+                    const lerp = Math.min(1, 0.05 * timeScale);
+                    this.orbitRadius += (clamped - this.orbitRadius) * lerp;
+                } else {
+                    this.orbitRadius = clamped;
+                }
+            }
+
+            _predictTargetPosition(player, projectileSpeed, now, options = {}) {
+                if (!player || !Number.isFinite(projectileSpeed) || projectileSpeed <= 0) return null;
+                const prevX = this._lastPlayerX;
+                const prevY = this._lastPlayerY;
+                if (!Number.isFinite(prevX) || !Number.isFinite(prevY)) {
+                    return { x: player.x, y: player.y, leadFrames: 0 };
+                }
+                const nominalFrameMs = options.nominalFrameMs || (1000 / 60);
+                const lastSampleTime = this._lastPlayerSampleTime || now;
+                const dtMs = Math.max(1, now - lastSampleTime);
+                const frameFactor = dtMs / nominalFrameMs;
+                const invFrame = frameFactor > 0 ? 1 / frameFactor : 1;
+                let targetVx = (player.x - prevX) * invFrame;
+                let targetVy = (player.y - prevY) * invFrame;
+                const maxTargetSpeed = options.maxTargetSpeed || 14;
+                const targetSpeed = Math.hypot(targetVx, targetVy);
+                if (targetSpeed > maxTargetSpeed && targetSpeed > 0) {
+                    const clamp = maxTargetSpeed / targetSpeed;
+                    targetVx *= clamp;
+                    targetVy *= clamp;
+                }
+                const relX = player.x - this.x;
+                const relY = player.y - this.y;
+                const projectileSpeedSq = projectileSpeed * projectileSpeed;
+                const targetSpeedSq = targetVx * targetVx + targetVy * targetVy;
+                const a = targetSpeedSq - projectileSpeedSq;
+                const b = 2 * (relX * targetVx + relY * targetVy);
+                const c = relX * relX + relY * relY;
+                let t = 0;
+                if (Math.abs(a) < 1e-6) {
+                    if (Math.abs(b) > 1e-6) t = -c / b;
+                } else {
+                    const discriminant = b * b - 4 * a * c;
+                    if (discriminant >= 0) {
+                        const sqrtDisc = Math.sqrt(discriminant);
+                        const t1 = (-b - sqrtDisc) / (2 * a);
+                        const t2 = (-b + sqrtDisc) / (2 * a);
+                        t = Math.min(t1, t2);
+                        if (t < 0) t = Math.max(t1, t2);
+                    }
+                }
+                if (!Number.isFinite(t) || t < 0) t = 0;
+                const maxLead = options.maxLeadFrames || 120;
+                t = Math.min(maxLead, t);
+                const predictedX = player.x + targetVx * t;
+                const predictedY = player.y + targetVy * t;
+                if (options.clampBounds === false) {
+                    return { x: predictedX, y: predictedY, leadFrames: t };
+                }
+                const bounds = this._getBounds();
+                return {
+                    x: Math.max(bounds.minX, Math.min(bounds.maxX, predictedX)),
+                    y: Math.max(bounds.minY, Math.min(bounds.maxY, predictedY)),
+                    leadFrames: t
+                };
             }
 
             _chooseNextMode(now) {
@@ -5549,10 +5638,14 @@
 
             _maybeFireBullet(now, player) {
                 if (!player || now < this.nextBulletTime || !Array.isArray(this.game.enemyBullets)) return;
-                const baseAngle = Math.atan2(player.y - this.y, player.x - this.x);
-                const spray = (Math.random() - 0.5) * this.bulletSprayRadians;
-                const angle = baseAngle + spray;
                 const speed = this.bulletSpeed;
+                const prediction = this._predictTargetPosition(player, speed, now, { maxLeadFrames: 110 });
+                const targetX = prediction ? prediction.x : player.x;
+                const targetY = prediction ? prediction.y : player.y;
+                const baseAngle = Math.atan2(targetY - this.y, targetX - this.x);
+                const leadBasedSpray = prediction && prediction.leadFrames > 0 ? 0.6 : 1;
+                const spray = (Math.random() - 0.5) * this.bulletSprayRadians * leadBasedSpray;
+                const angle = baseAngle + spray;
                 const vx = Math.cos(angle) * speed;
                 const vy = Math.sin(angle) * speed;
                 this.game.enemyBullets.push(new EnemyBullet(
@@ -5579,7 +5672,12 @@
 
             _maybeFireRocket(now, player) {
                 if (!player || now < this.nextRocketTime || !Array.isArray(this.game.enemyRockets)) return;
-                const rocket = new EnemyRocket(this.x, this.y, player.x, player.y, this.rocketDamage, {
+                const prediction = this._predictTargetPosition(player, this.rocketPredictionSpeed, now, {
+                    maxLeadFrames: 180
+                });
+                const aimX = prediction ? prediction.x : player.x;
+                const aimY = prediction ? prediction.y : player.y;
+                const rocket = new EnemyRocket(this.x, this.y, aimX, aimY, this.rocketDamage, {
                     trailColor: '#ff6060',
                     glowColor: 'rgba(255, 64, 64, 0.9)',
                     aoeRadius: 110
@@ -5606,6 +5704,7 @@
                 const now = Date.now();
                 const timeScale = getTimeScale();
                 const motion = getMotionScale();
+                this._updateDistancePulse(timeScale);
                 if (this.damageFlash > 0) this.damageFlash = Math.max(0, this.damageFlash - timeScale);
                 if (this.recentDamageFade > 0) this.recentDamageFade = Math.max(0, this.recentDamageFade - timeScale);
                 this.pulse = (this.pulse + 0.04 * timeScale) % (Math.PI * 2);
@@ -5646,6 +5745,7 @@
                     this._maybePlaceMine(now);
                     this._lastPlayerX = player.x;
                     this._lastPlayerY = player.y;
+                    this._lastPlayerSampleTime = now;
                 }
             }
 
@@ -5722,7 +5822,10 @@
                 if (audio) audio.playSound('bossDefeated');
                 if (effects) {
                     if (typeof effects.createExplosion === 'function') {
-                        effects.createExplosion(this.x, this.y, 'circle', this.radius * 2.2);
+                        const explosionType = (this.config && this.config.bossBaseType && ENEMY_TYPES[this.config.bossBaseType])
+                            ? this.config.bossBaseType
+                            : (ENEMY_TYPES['player_2_boss'] ? 'player_2_boss' : 'square');
+                        effects.createExplosion(this.x, this.y, explosionType, this.radius * 2.2);
                     }
                     if (typeof effects.createEnemyRocketExplosionRing === 'function') {
                         effects.createEnemyRocketExplosionRing(this.x, this.y, this.radius * 3);
@@ -5750,6 +5853,11 @@
                 const glowColor = this.config.glowColor || 'rgba(255, 64, 64, 0.85)';
                 const pulseScale = 1 + 0.05 * Math.sin(this.pulse);
                 const drawRadius = this.radius * pulseScale;
+                const isDashing = this.dashState.active;
+                const dashAlpha = isDashing ? 0.42 : 1;
+                if (dashAlpha < 1) {
+                    ctx.globalAlpha = dashAlpha;
+                }
                 ctx.shadowColor = glowColor;
                 ctx.shadowBlur = 24 + 6 * Math.sin(this.glowPulse * 1.6);
                 ctx.beginPath();
