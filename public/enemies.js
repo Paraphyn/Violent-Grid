@@ -127,7 +127,8 @@ const ENEMY_TYPES = {
         strokeColor: '#dd0000',
         isBoss: true,
         bossBaseType: 'rhombus',
-        bossTriangleSpawnIntervalMs: 2700
+        bossTriangleSpawnIntervalMs: 2700,
+        deathSound: 'bossDefeated'
     }
 };
 
