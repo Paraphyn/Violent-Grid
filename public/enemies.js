@@ -148,8 +148,8 @@ ENEMY_TYPES['vector_snake_boss'] = {
 
 ENEMY_TYPES['player_2_boss'] = {
     role: 'boss',
-    health: 6000,
-    speed: 5,
+    health: 3000,
+    speed: 4,
     size: 40,
     points: 950,
     damage: 0,
