@@ -1326,6 +1326,7 @@
                 this.explosionAreaMultiplier = 1;
                 // Visual theme for rendering: 'default' | 'cyan' | 'rainbow'
                 this.theme = 'default';
+                this.onDamageTaken = null;
             }
 
             startDash(keys, effects, audio) {
@@ -1378,6 +1379,9 @@
                 if (audio) audio.playSound('playerDamage');
                 if (typeof window !== 'undefined' && window.game && window.game.shakeCanvas) {
                     window.game.shakeCanvas(5, 220);
+                }
+                if (typeof this.onDamageTaken === 'function') {
+                    this.onDamageTaken(actualDamage);
                 }
                 return true;
             }
@@ -6153,6 +6157,11 @@
                 this.input = new InputManager();
                 this.audio = new AudioManager();
                 this.uiManager = new UIManager();
+                this.waveCompletionVoicePools = {
+                    flawless: ['wavePerfectP1', 'wavePerfectP2'],
+                    damaged: ['waveDamageN1', 'waveDamageN2', 'waveDamageN3', 'waveDamageN4']
+                };
+                this.playerDamagedThisWave = false;
                 this.tutorialOverlay = null;
                 this.isTutorialOpen = false;
                 this.openTutorial = () => {};
@@ -7003,6 +7012,7 @@
                     this.enemyRockets = [];
                     this.enemyMines = [];
                   this.enemies = [];
+                  this.playerDamagedThisWave = false;
                 this.effects = new EffectsManager();
                 this.score = 0;
                 this.enemiesKilled = 0;
@@ -7055,6 +7065,11 @@
                     this.player.bulletDamageMultiplier = 1;
                     this.player.railgunChargeSpeedMultiplier = 1;
                     this.player.explosionAreaMultiplier = 1;
+                    this.player.onDamageTaken = () => {
+                        if (this.waveStarted && !this.inBossPhase) {
+                            this.playerDamagedThisWave = true;
+                        }
+                    };
                 }
                 
                 // Grouped wave state
@@ -7595,6 +7610,7 @@
                     this.currentWave = waveConfig.wave;
                 }
                 this.waveStarted = true;
+                this.playerDamagedThisWave = false;
                 if (this.initialSpawnDelayUntil) {
                     this.initialSpawnDelayUntil = null;
                 }
@@ -7713,6 +7729,19 @@
                 }
             }
 
+            handleWaveCompleted() {
+                if (this.inBossPhase) return;
+                const pools = this.waveCompletionVoicePools;
+                if (!pools) return;
+                const poolKey = this.playerDamagedThisWave ? 'damaged' : 'flawless';
+                const pool = Array.isArray(pools[poolKey]) ? pools[poolKey] : null;
+                if (!pool || pool.length === 0) return;
+                const index = Math.floor(Math.random() * pool.length);
+                const soundKey = pool[index];
+                if (!soundKey || !this.audio || typeof this.audio.playSound !== 'function') return;
+                this.audio.playSound(soundKey);
+            }
+
             update(timestamp) {
                 if (this.inLobby) return;  // Don't update game logic in lobby
                 if (this.gameOver || this.paused) return;
@@ -7805,6 +7834,7 @@
                 const allElitesSpawned = this.spawnedEliteEnemies >= this.totalEliteToSpawn;
                 if (!this.inBossPhase && this.waveStarted && allRegularSpawned && allElitesSpawned && this.enemies.length === 0) {
                     // Wave completed, start pause before next wave
+                    this.handleWaveCompleted();
                     this.waveStarted = false;
                     this.waveSpawnInterval = 0;
                     this.eliteSpawnSchedules = [];
