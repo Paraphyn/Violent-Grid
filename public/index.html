@@ -6188,6 +6188,9 @@
                     digits: ['0', '1'],
                     digitChangeMode: 'random'
                 });
+                this.gameOverVoiceTimeoutId = null;
+                this.gameOverVoiceCooldownMs = 2000;
+                this.gameOverVoiceKeys = ['n1-keep-trying', 'n3-try-harder', 'n4-you-can-do-better'];
                 this.tetrisManager = new TetrisManager(this);
                 // Lobby radial lines config (precompute base directions)
                 this.lobbyRadial = { lineCount: 36, innerR: 80, baseDirs: [] };
@@ -6464,6 +6467,34 @@
                 console.log('Initializing audio system...');
                 await this.audio.initialize();
                 console.log('✓ Audio preloading complete');
+            }
+
+            _clearGameOverVoiceTimeout() {
+                if (this.gameOverVoiceTimeoutId) {
+                    clearTimeout(this.gameOverVoiceTimeoutId);
+                    this.gameOverVoiceTimeoutId = null;
+                }
+            }
+
+            scheduleGameOverVoiceLine() {
+                if (!this.gameOver || !Array.isArray(this.gameOverVoiceKeys) || this.gameOverVoiceKeys.length === 0) {
+                    return;
+                }
+                this._clearGameOverVoiceTimeout();
+                const delay = Number.isFinite(this.gameOverVoiceCooldownMs) ? this.gameOverVoiceCooldownMs : 2000;
+                this.gameOverVoiceTimeoutId = setTimeout(() => {
+                    this.gameOverVoiceTimeoutId = null;
+                    if (!this.gameOver) return;
+                    if (!this.audio || typeof this.audio.playSound !== 'function') return;
+                    const keys = Array.isArray(this.gameOverVoiceKeys) ? this.gameOverVoiceKeys : [];
+                    if (keys.length === 0) return;
+                    const available = keys.filter(key => this.audio.audios && this.audio.audios[key]);
+                    const pool = available.length > 0 ? available : keys;
+                    const choice = pool[Math.floor(Math.random() * pool.length)];
+                    if (choice) {
+                        this.audio.playSound(choice);
+                    }
+                }, Math.max(0, delay));
             }
             
             setupLobby() {
@@ -6981,6 +7012,7 @@
             }
 
                 reset() {
+                    this._clearGameOverVoiceTimeout();
                     this.input.clear();
                     this.upgradePause = false;
                     this.upgradeOverlayHiddenByPause = false;
@@ -8640,6 +8672,7 @@
                     this.updateBestStatsLabel();
                     this.player.stopRailgunCharge(this.audio);
                     this.audio.playSound('gameOver');
+                    this.scheduleGameOverVoiceLine();
                     this.uiManager.hideUI(); // Hide UI when game over
                 }
 

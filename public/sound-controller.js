@@ -39,7 +39,10 @@
             boss_hit: { file: 'boss-hit.wav', loop: false },
             SnakeEatsApple: { file: 'snake-eats-apple.wav', loop: false },
             bossDefeated: { file: 'boss-killed.wav', loop: false },
-            gameOver: { file: 'game-over.wav', loop: false }
+            gameOver: { file: 'game-over.wav', loop: false },
+            'n1-keep-trying': { file: 'n1-keep-trying.wav', loop: false },
+            'n3-try-harder': { file: 'n3-try-harder.wav', loop: false },
+            'n4-you-can-do-better': { file: 'n4-you-can-do-better.wav', loop: false }
         },
         settings: {
             defaultVolume: 0.7,
