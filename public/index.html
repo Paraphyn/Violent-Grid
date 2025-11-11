@@ -6247,6 +6247,9 @@
                 this.enemiesToSpawn = [];
                 this.spawnedEnemies = 0;
                 this.waveSpawnInterval = 0;
+                this.eliteSpawnSchedules = [];
+                this.totalEliteToSpawn = 0;
+                this.spawnedEliteEnemies = 0;
                 this.initialSpawnDelayUntil = Date.now() + INITIAL_ENEMY_SPAWN_DELAY_MS;
                 this.gameOver = false;
                 this.paused = false;
@@ -6821,19 +6824,22 @@
                 this.waveStartTime = Date.now();
                 this.spawnedEnemies = 0;
                 this.enemiesToSpawn = [];
+                this.eliteSpawnSchedules = [];
+                this.totalEliteToSpawn = 0;
+                this.spawnedEliteEnemies = 0;
                 this.inWavePause = false;
                 const simultaneousSpawns = Math.max(1, waveConfig.simultaneousSpawns || 1);
                 this.waveSimultaneousSpawns = simultaneousSpawns;
                 
                 const dashSquares = Math.max(0, waveConfig.enemies.dashSquares || 0);
                 const baseCubes = Math.max(0, waveConfig.enemies.cubes || 0);
+                const killerTriangles = Math.max(0, waveConfig.enemies.killerTriangles || 0);
+                const superOctagons = Math.max(0, waveConfig.enemies.superOctagons || 0);
                 const enemyCounts = {
                     square: Math.max(0, baseCubes - dashSquares),
                     dash_square: dashSquares,
                     triangle: Math.max(0, waveConfig.enemies.triangles || 0),
-                    killer_triangle: Math.max(0, waveConfig.enemies.killerTriangles || 0),
                     octagon: Math.max(0, waveConfig.enemies.octagons || 0),
-                    super_octagon: Math.max(0, waveConfig.enemies.superOctagons || 0),
                     rhombus: Math.max(0, waveConfig.enemies.rhombuses || 0)
                 };
                 for (const [type, count] of Object.entries(enemyCounts)) {
@@ -6845,6 +6851,81 @@
                     const j = Math.floor(Math.random() * (i + 1));
                     [this.enemiesToSpawn[i], this.enemiesToSpawn[j]] = [this.enemiesToSpawn[j], this.enemiesToSpawn[i]];
                 }
+                
+                const timeScale = Math.max(0.001, getTimeScale());
+                const eliteEntries = [];
+                const explicitEliteTypes = new Set();
+                const normalizeEliteEntry = entry => {
+                    if (!entry) return null;
+                    let rawType = entry.type ?? entry.enemy ?? entry.key ?? entry.name;
+                    if (typeof rawType !== 'string') return null;
+                    const trimmed = rawType.trim();
+                    let typeKey = trimmed;
+                    if (!ENEMY_TYPES[typeKey]) {
+                        const aliasLookup = trimmed.replace(/[\s_-]+/g, '').toLowerCase();
+                        const aliasMap = {
+                            killertriangle: 'killer_triangle',
+                            killertriangles: 'killer_triangle',
+                            killer_triangle: 'killer_triangle',
+                            superoctagon: 'super_octagon',
+                            superoctagons: 'super_octagon',
+                            super_octagon: 'super_octagon'
+                        };
+                        typeKey = aliasMap[aliasLookup] || aliasMap[trimmed.toLowerCase()] || typeKey;
+                    }
+                    if (!ENEMY_TYPES[typeKey]) return null;
+                    const countSource = entry.count ?? entry.amount ?? entry.quantity ?? entry.total;
+                    const countNumber = Number(countSource);
+                    const count = Number.isFinite(countNumber) ? Math.max(0, Math.floor(countNumber)) : 0;
+                    if (count <= 0) return null;
+                    const initialDelayValue = Number(entry.initialDelayMs ?? entry.firstSpawnDelayMs ?? entry.spawnDelayMs ?? entry.delayMs ?? 0);
+                    const safeInitialDelay = Number.isFinite(initialDelayValue) ? Math.max(0, initialDelayValue) : 0;
+                    const repeatDelaySource = entry.repeatDelayMs ?? entry.spawnIntervalMs ?? entry.intervalMs;
+                    let repeatDelayValue = Number(repeatDelaySource);
+                    if (!Number.isFinite(repeatDelayValue)) {
+                        repeatDelayValue = count > 1 ? safeInitialDelay : safeInitialDelay;
+                    }
+                    const safeRepeatDelay = Math.max(0, repeatDelayValue);
+                    return {
+                        type: typeKey,
+                        count,
+                        firstDelayRealMs: safeInitialDelay / timeScale,
+                        intervalRealMs: safeRepeatDelay / timeScale
+                    };
+                };
+                const configElite = Array.isArray(waveConfig.eliteSpawns)
+                    ? waveConfig.eliteSpawns
+                    : (Array.isArray(waveConfig.elites) ? waveConfig.elites : null);
+                if (configElite) {
+                    for (const entry of configElite) {
+                        const normalized = normalizeEliteEntry(entry);
+                        if (normalized) {
+                            eliteEntries.push(normalized);
+                            explicitEliteTypes.add(normalized.type);
+                        }
+                    }
+                }
+                if (killerTriangles > 0 && !explicitEliteTypes.has('killer_triangle')) {
+                    const normalized = normalizeEliteEntry({ type: 'killer_triangle', count: killerTriangles, initialDelayMs: 0, repeatDelayMs: 0 });
+                    if (normalized) {
+                        eliteEntries.push(normalized);
+                    }
+                }
+                if (superOctagons > 0 && !explicitEliteTypes.has('super_octagon')) {
+                    const normalized = normalizeEliteEntry({ type: 'super_octagon', count: superOctagons, initialDelayMs: 0, repeatDelayMs: 0 });
+                    if (normalized) {
+                        eliteEntries.push(normalized);
+                    }
+                }
+                this.eliteSpawnSchedules = eliteEntries.map(entry => ({
+                    type: entry.type,
+                    count: entry.count,
+                    spawned: 0,
+                    nextSpawnAt: this.waveStartTime + entry.firstDelayRealMs,
+                    intervalRealMs: entry.intervalRealMs
+                }));
+                this.totalEliteToSpawn = this.eliteSpawnSchedules.reduce((sum, schedule) => sum + schedule.count, 0);
+                
                 const totalEnemies = this.enemiesToSpawn.length;
                 if (totalEnemies > 0) {
                     const spawnDuration = Math.max(0, waveConfig.spawnTime || 0);
@@ -6922,10 +7003,36 @@
                     }
                 }
                 
-                if (!this.inBossPhase && this.waveStarted && this.spawnedEnemies === this.enemiesToSpawn.length && this.enemies.length === 0) {
+                if (this.waveStarted && !this.inBossPhase && Array.isArray(this.eliteSpawnSchedules) && this.eliteSpawnSchedules.length > 0) {
+                    for (const schedule of this.eliteSpawnSchedules) {
+                        if (!schedule) continue;
+                        while (schedule.spawned < schedule.count && now + 1e-6 >= schedule.nextSpawnAt) {
+                            this.spawnEnemy(schedule.type);
+                            schedule.spawned += 1;
+                            this.spawnedEliteEnemies += 1;
+                            if (schedule.spawned < schedule.count) {
+                                const interval = Number.isFinite(schedule.intervalRealMs) ? schedule.intervalRealMs : 0;
+                                const clampedInterval = Math.max(0, interval);
+                                schedule.nextSpawnAt += clampedInterval;
+                                if (clampedInterval === 0) {
+                                    schedule.nextSpawnAt = now;
+                                }
+                            } else {
+                                schedule.nextSpawnAt = Infinity;
+                            }
+                        }
+                    }
+                }
+                
+                const allRegularSpawned = this.spawnedEnemies >= this.enemiesToSpawn.length;
+                const allElitesSpawned = this.spawnedEliteEnemies >= this.totalEliteToSpawn;
+                if (!this.inBossPhase && this.waveStarted && allRegularSpawned && allElitesSpawned && this.enemies.length === 0) {
                     // Wave completed, start pause before next wave
                     this.waveStarted = false;
                     this.waveSpawnInterval = 0;
+                    this.eliteSpawnSchedules = [];
+                    this.totalEliteToSpawn = 0;
+                    this.spawnedEliteEnemies = 0;
                     this.inWavePause = true;
                     this.wavePauseEndTime = Date.now() + Math.round(3000 / Math.max(0.001, getTimeScale())); // 3 second pause
                 }
