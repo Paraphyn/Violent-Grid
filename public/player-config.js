@@ -6,25 +6,25 @@
 
     const xpLevels = [
         50, // Level 1 -> 2
-        100, // Level 2 -> 3
-        150, // Level 3 -> 4
-        200, // Level 4 -> 5
-        250, // Level 5 -> 6
-        300, // Level 6 -> 7
-        350, // Level 7 -> 8
-        400, // Level 8 -> 9
-        450, // Level 9 -> 10
-        500, // Level 10 -> 11
-        550, // Level 11 -> 12
-        600, // Level 12 -> 13
-        650, // Level 13 -> 14
-        700, // Level 14 -> 15
-        750, // Level 15 -> 16
-        800, // Level 16 -> 17
-        850, // Level 17 -> 18
-        900, // Level 18 -> 19
-        950, // Level 19 -> 20
-        1000 // Level 20 -> 21+
+        125, // Level 2 -> 3
+        175, // Level 3 -> 4
+        225, // Level 4 -> 5
+        275, // Level 5 -> 6
+        325, // Level 6 -> 7
+        375, // Level 7 -> 8
+        425, // Level 8 -> 9
+        475, // Level 9 -> 10
+        525, // Level 10 -> 11
+        575, // Level 11 -> 12
+        625, // Level 12 -> 13
+        675, // Level 13 -> 14
+        725, // Level 14 -> 15
+        775, // Level 15 -> 16
+        825, // Level 16 -> 17
+        875, // Level 17 -> 18
+        925, // Level 18 -> 19
+        975, // Level 19 -> 20
+        1025 // Level 20 -> 21+
     ];
 
     function getRequiredXpForLevel(level) {
