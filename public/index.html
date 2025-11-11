@@ -7689,7 +7689,7 @@
                                         if (this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
                                             this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
                                         }
-                                        continue outerRocket;
+                                        continue;
                                     }
                                 }
                                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
@@ -7818,7 +7818,7 @@
                                         if (this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
                                             this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
                                         }
-                                        continue outerMine;
+                                          continue;
                                     } else {
                                         this.activeBoss.handleAoeDamage(m.x, m.y, m.aoeRadius, m.damage, this.effects, this.audio);
                                     }
