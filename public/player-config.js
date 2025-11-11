@@ -110,7 +110,7 @@
             key: 'speed_1',
             level: 1,
             title: 'SPEED',
-            desc: '+5% Speed',
+            desc: '+5% Movement Speed',
             image: 'Upgrade Icons/speed.png',
             category: 'speed',
             apply(game) {
@@ -123,7 +123,7 @@
             key: 'speed_2',
             level: 3,
             title: 'SPEED 2',
-            desc: '+5% Speed',
+            desc: '+5% Movement Speed',
             image: 'Upgrade Icons/speed.png',
             category: 'speed',
             apply(game) {
@@ -136,7 +136,7 @@
             key: 'speed_3',
             level: 6,
             title: 'SPEED 3',
-            desc: '+5% Speed',
+            desc: '+5% Movement Speed',
             image: 'Upgrade Icons/speed.png',
             category: 'speed',
             apply(game) {
@@ -200,8 +200,8 @@
         {
             key: 'explosion_area_1',
             level: 4,
-            title: 'EXPLOSION AREA',
-            desc: '+10% Mine & Rocket Area',
+            title: 'EXPLOSION',
+            desc: '+10% Rocket & Mine Area',
             image: 'Upgrade Icons/area_damage_size.png',
             category: 'explosion_area',
             apply(game) {
@@ -214,8 +214,8 @@
         {
             key: 'explosion_area_2',
             level: 8,
-            title: 'EXPLOSION AREA 2',
-            desc: '+10% Mine & Rocket Area',
+            title: 'EXPLOSION 2',
+            desc: '+10% Rocket & Mine Area'',
             image: 'Upgrade Icons/area_damage_size.png',
             category: 'explosion_area',
             apply(game) {
@@ -228,8 +228,8 @@
         {
             key: 'explosion_area_3',
             level: 12,
-            title: 'EXPLOSION AREA 3',
-            desc: '+10% Mine & Rocket Area',
+            title: 'EXPLOSION 3',
+            desc: '+10% Rocket & Mine Area'',
             image: 'Upgrade Icons/area_damage_size.png',
             category: 'explosion_area',
             apply(game) {
@@ -242,7 +242,7 @@
         {
             key: 'railgun_charge_1',
             level: 3,
-            title: 'RAILGUN CHARGE',
+            title: 'CHARGE',
             desc: '10% Faster Railgun Charge',
             image: 'Upgrade Icons/railgun_charge.png',
             category: 'railgun_charge',
@@ -255,7 +255,7 @@
         {
             key: 'railgun_charge_2',
             level: 7,
-            title: 'RAILGUN CHARGE 2',
+            title: 'CHARGE 2',
             desc: '10% Faster Railgun Charge',
             image: 'Upgrade Icons/railgun_charge.png',
             category: 'railgun_charge',
@@ -268,7 +268,7 @@
         {
             key: 'railgun_charge_3',
             level: 10,
-            title: 'RAILGUN CHARGE 3',
+            title: 'CHARGE 3',
             desc: '10% Faster Railgun Charge',
             image: 'Upgrade Icons/railgun_charge.png',
             category: 'railgun_charge',
