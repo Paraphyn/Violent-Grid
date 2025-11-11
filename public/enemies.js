@@ -255,9 +255,7 @@ const WAVE_GROUPS = [
     [
         { enemies: { cubes: 10, rhombuses: 3 }, spawnTime: 10000, simultaneousSpawns: 1 },
         {
-            enemies: { triangles: 12 },
-            spawnTime: 15000,
-            simultaneousSpawns: 1,
+            enemies: { triangles: 12 }, spawnTime: 15000, simultaneousSpawns: 1, 
             eliteSpawns: [
                 { type: 'killer_triangle', count: 3, initialDelayMs: 3000, repeatDelayMs: 4000 }
             ]
