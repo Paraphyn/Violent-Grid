@@ -148,7 +148,7 @@ ENEMY_TYPES['vector_snake_boss'] = {
 
 ENEMY_TYPES['player_2_boss'] = {
     role: 'boss',
-    health: 3000,
+    health: 2000,
     speed: 4,
     size: 40,
     points: 950,
@@ -156,9 +156,9 @@ ENEMY_TYPES['player_2_boss'] = {
     xp: 150,
     fillColor: '#ff2e2e',
     strokeColor: '#c40000',
-    glowColor: 'rgba(255, 64, 64, 0.85)',
-    dashColor: '#ff2e2e',
-    dashGlowColor: 'rgba(255, 48, 48, 0.9)',
+    glowColor: 'rgba(255, 64, 64, 0.85)', opacity: 0.5,
+    dashColor: '#ff2e2e', opacity: 0.5, 
+    dashGlowColor: 'rgba(255, 48, 48, 0.9)', opacity: 0.5,
     enemyBulletDamage: 15,
     rocketDamage: 25,
     mineDamage: 25,
