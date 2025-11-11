@@ -167,6 +167,46 @@ ENEMY_TYPES['player_2_boss'] = {
     displayName: 'PLAYER #2'
 };
 
+ENEMY_TYPES['ping_and_pong_boss'] = {
+    role: 'boss',
+    health: 5000,
+    speed: 0,
+    size: 80,
+    points: 950,
+    damage: 0,
+    xp: 150,
+    fillColor: '#ff3344',
+    strokeColor: '#aa0011',
+    glowColor: 'rgba(255, 48, 48, 0.85)',
+    isBoss: true,
+    bossBaseType: 'ping_and_pong',
+    displayName: 'PING & PONG',
+    paddleWidth: 20,
+    paddleHeight: 80,
+    paddleGlowColor: 'rgba(255, 32, 32, 0.9)',
+    paddleFollowLerp: 0.18,
+    paddleDamage: 300,
+    ballRadius: 40,
+    ballHealth: 5000,
+    ballBaseSpeed: 6,
+    ballSpeedIncrement: 0.5,
+    ballMaxSpeed: 14,
+    ballContactDamage: 25,
+    energyWaveIntervalMs: 4000,
+    energyWaveRadius: 150,
+    energyWaveDamage: 25,
+    extraBallSpawnDelayMs: 10000,
+    extraBallHealth: 100,
+    extraBallRadius: 26,
+    extraBallSpeed: 7.5,
+    extraBallContactDamage: 25,
+    extraBallExplosionRadius: 120,
+    extraBallExplosionDamage: 25,
+    extraBallMaxBounces: 8,
+    maxExtraBalls: 4,
+    barrierInset: 56
+};
+
 // Boss: Tetris Cross (cross made of squares)
 // Declared as a boss type so it appears in the boss pool, but it has a custom class/behavior elsewhere
 ENEMY_TYPES['tetris_cross_boss'] = {
@@ -243,7 +283,8 @@ const BOSS_NAME_MAP = Object.freeze({
     vector_snake_boss: 'VECTOR SNAKE',
     tetris_cross_boss: 'TETRIS+',
     rhombus_boss: 'RHOMBOSS',
-    player_2_boss: 'PLAYER #2'
+    player_2_boss: 'PLAYER #2',
+    ping_and_pong_boss: 'PING & PONG'
 });
 
 // Tetris Cross boss config
