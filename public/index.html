@@ -1633,8 +1633,8 @@
             }
 
             update(canvas, effects) {
-                // Orange longer trail (3x life)
-                if (effects && effects.createRocketTrail) effects.createRocketTrail(this.x, this.y, '#FFA500');
+                // White trail (3x life)
+                if (effects && effects.createRocketTrail) effects.createRocketTrail(this.x, this.y, '#FFFFFF');
                 const motion = getMotionScale();
                 const t = getTimeScale();
                 this.speed += this.acceleration * t;
@@ -5678,7 +5678,7 @@
                 const aimX = prediction ? prediction.x : player.x;
                 const aimY = prediction ? prediction.y : player.y;
                 const rocket = new EnemyRocket(this.x, this.y, aimX, aimY, this.rocketDamage, {
-                    trailColor: '#ff6060',
+                    trailColor: '#FFA500',
                     glowColor: 'rgba(255, 64, 64, 0.9)',
                     aoeRadius: 110
                 });
