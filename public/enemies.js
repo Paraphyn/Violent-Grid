@@ -229,10 +229,14 @@ const VECTOR_SNAKE_SETTINGS = Object.freeze({
     appleSpawnNearPlayerMaxDistance: 200
 });
 
-const FORCE_PLAYER_TWO_FIRST_BOSS = false; // Toggle to lock Player #2 boss as the first encounter
+const FIRST_BOSS_LOCK = Object.freeze({
+    // Set enabled to true and bossKey to any valid enemy key (e.g., 'player_2_boss') to lock that boss as the first encounter
+    enabled: false,
+    bossKey: ''
+});
 
 const BOSS_SELECTION = Object.freeze({
-    firstBossKey: FORCE_PLAYER_TWO_FIRST_BOSS ? 'player_2_boss' : null
+    firstBossKey: FIRST_BOSS_LOCK.enabled ? FIRST_BOSS_LOCK.bossKey : null
 });
 
 const BOSS_NAME_MAP = Object.freeze({
@@ -244,8 +248,6 @@ const BOSS_NAME_MAP = Object.freeze({
 
 // Tetris Cross boss config
 const TETRIS_SETTINGS = {
-    // Toggle: force Tetris Cross as the first boss with 100% spawn chance
-    forceFirstBoss: false,
     // Playfield
     cols: 36,
     cellSize: null, // computed from canvas width
