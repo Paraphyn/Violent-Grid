@@ -229,7 +229,7 @@ const VECTOR_SNAKE_SETTINGS = Object.freeze({
     appleSpawnNearPlayerMaxDistance: 200
 });
 
-const FORCE_PLAYER_TWO_FIRST_BOSS = true; // Toggle to lock Player #2 boss as the first encounter
+const FORCE_PLAYER_TWO_FIRST_BOSS = false; // Toggle to lock Player #2 boss as the first encounter
 
 const BOSS_SELECTION = Object.freeze({
     firstBossKey: FORCE_PLAYER_TWO_FIRST_BOSS ? 'player_2_boss' : null
