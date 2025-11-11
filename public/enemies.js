@@ -146,6 +146,27 @@ ENEMY_TYPES['vector_snake_boss'] = {
     bossBaseType: 'vector_snake'
 };
 
+ENEMY_TYPES['player_2_boss'] = {
+    role: 'boss',
+    health: 6000,
+    speed: 5,
+    size: 40,
+    points: 950,
+    damage: 0,
+    xp: 150,
+    fillColor: '#ff2e2e',
+    strokeColor: '#c40000',
+    glowColor: 'rgba(255, 64, 64, 0.85)',
+    dashColor: '#ff2e2e',
+    dashGlowColor: 'rgba(255, 48, 48, 0.9)',
+    enemyBulletDamage: 15,
+    rocketDamage: 25,
+    mineDamage: 25,
+    isBoss: true,
+    bossBaseType: 'player_clone',
+    displayName: 'PLAYER #2'
+};
+
 // Boss: Tetris Cross (cross made of squares)
 // Declared as a boss type so it appears in the boss pool, but it has a custom class/behavior elsewhere
 ENEMY_TYPES['tetris_cross_boss'] = {
@@ -208,14 +229,17 @@ const VECTOR_SNAKE_SETTINGS = Object.freeze({
     appleSpawnNearPlayerMaxDistance: 200
 });
 
+const FORCE_PLAYER_TWO_FIRST_BOSS = true; // Toggle to lock Player #2 boss as the first encounter
+
 const BOSS_SELECTION = Object.freeze({
-    firstBossKey: null
+    firstBossKey: FORCE_PLAYER_TWO_FIRST_BOSS ? 'player_2_boss' : null
 });
 
 const BOSS_NAME_MAP = Object.freeze({
     vector_snake_boss: 'VECTOR SNAKE',
     tetris_cross_boss: 'TETRIS+',
-    rhombus_boss: 'RHOMBOSS'
+    rhombus_boss: 'RHOMBOSS',
+    player_2_boss: 'PLAYER #2'
 });
 
 // Tetris Cross boss config

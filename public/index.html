@@ -1761,6 +1761,116 @@
             }
         }
 
+        class EnemyRocket {
+            constructor(x, y, targetX, targetY, damage = 25, options = {}) {
+                this.x = x;
+                this.y = y;
+                const dx = targetX - x;
+                const dy = targetY - y;
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                this.dirX = dx / len;
+                this.dirY = dy / len;
+                this.speed = options.initialSpeed != null ? options.initialSpeed : 4;
+                this.acceleration = options.acceleration != null ? options.acceleration : 0.12;
+                this.radius = options.radius != null ? options.radius : 8;
+                this.life = options.life != null ? options.life : 220;
+                this.damage = damage;
+                this.aoeRadius = options.aoeRadius != null ? options.aoeRadius : 100;
+                this.trailColor = options.trailColor || '#ff3e3e';
+                this.glowColor = options.glowColor || 'rgba(255, 64, 64, 0.8)';
+                this.hitPlayer = false;
+            }
+
+            update(canvas, effects, player) {
+                if (effects && typeof effects.createRocketTrail === 'function') {
+                    effects.createRocketTrail(this.x, this.y, this.trailColor);
+                }
+                const t = getTimeScale();
+                const motion = getMotionScale();
+                this.speed += this.acceleration * t;
+                this.x += this.dirX * this.speed * motion;
+                this.y += this.dirY * this.speed * motion;
+                this.life -= t;
+                if (player) {
+                    const dx = player.x - this.x;
+                    const dy = player.y - this.y;
+                    const limit = player.radius + this.radius;
+                    if (dx * dx + dy * dy <= limit * limit) {
+                        this.hitPlayer = true;
+                        return false;
+                    }
+                }
+                const inside = this.x >= -this.radius && this.x <= canvas.width + this.radius &&
+                               this.y >= -this.radius && this.y <= canvas.height + this.radius;
+                if (!inside || this.life <= 0) {
+                    return false;
+                }
+                return true;
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#ff2e2e';
+                ctx.shadowColor = this.glowColor;
+                ctx.shadowBlur = this.radius * 2;
+                ctx.fill();
+                ctx.strokeStyle = '#c40000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        class EnemyMine {
+            constructor(x, y, bossRadius, damage = 25, options = {}) {
+                this.x = x;
+                this.y = y;
+                const baseRadius = Math.max(3, Math.floor((bossRadius || 20) * 0.3));
+                this.radius = options.radius != null ? options.radius : baseRadius;
+                this.life = options.life != null ? options.life : 180;
+                this.damage = damage;
+                this.aoeRadius = options.aoeRadius != null ? options.aoeRadius : 100;
+                this.blinkPhase = 0;
+                this.blinkSpeed = options.blinkSpeed != null ? options.blinkSpeed : 0.25;
+                this.glowColor = options.glowColor || 'rgba(255, 60, 60, 0.9)';
+                this.triggered = false;
+            }
+
+            update(canvas, effects, player) {
+                const t = getTimeScale();
+                this.life -= t;
+                this.blinkPhase += this.blinkSpeed * t;
+                if (player) {
+                    const dx = player.x - this.x;
+                    const dy = player.y - this.y;
+                    const limit = player.radius + this.radius;
+                    if (dx * dx + dy * dy <= limit * limit) {
+                        this.triggered = true;
+                        return false;
+                    }
+                }
+                return this.life > 0;
+            }
+
+            draw(ctx) {
+                const blink = 0.55 + 0.45 * Math.abs(Math.sin(this.blinkPhase));
+                ctx.save();
+                ctx.globalAlpha = blink;
+                ctx.shadowColor = this.glowColor;
+                ctx.shadowBlur = this.radius * 1.6;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#ff2e2e';
+                ctx.fill();
+                ctx.strokeStyle = '#c40000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
         function getFirstBossOverride() {
             const candidate = BOSS_SELECTION.firstBossKey;
             if (typeof candidate === 'string') {
@@ -2116,6 +2226,33 @@
                     }
                 }));
             }
+
+        createEnemyRocketExplosionRing(x, y, maxRadius) {
+            this.effects.push(new Effect('enemyRocketExplosionRing', x, y, {
+                radius: 0,
+                maxRadius,
+                life: 30,
+                maxLife: 30,
+                typeSpecificUpdate: function() {
+                    const t = getTimeScale();
+                    this.life -= t;
+                    const k = 1 - (this.life / this.maxLife);
+                    this.radius = this.maxRadius * k;
+                    return this.life > 0;
+                },
+                typeSpecificDraw: function(ctx) {
+                    const alpha = Math.max(0, this.life / this.maxLife);
+                    ctx.save();
+                    ctx.globalAlpha = alpha;
+                    ctx.strokeStyle = '#ff2e2e';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }));
+        }
 
             createKillerTriangleDetonation(x, y, maxRadius) {
                 const radius = Math.max(40, maxRadius || 300);
@@ -5160,6 +5297,408 @@
             }
         }
 
+        class PlayerTwoBoss {
+            constructor(game) {
+                this.game = game;
+                this.config = ENEMY_TYPES['player_2_boss'] || {};
+                this.maxHealth = this.config.health || 6000;
+                this.health = this.maxHealth;
+                this.speed = this.config.speed || 5;
+                this.radius = (this.config.size || 40) / 2;
+                this.x = game.canvas.width / 2;
+                const safeMinY = game.getBossSafeMinCenterY ? game.getBossSafeMinCenterY() : 120;
+                this.y = Math.max(safeMinY + this.radius, game.canvas.height * 0.28);
+                this.mode = 'orbit';
+                this.modeExpiresAt = Date.now() + this._randomModeDuration();
+                this.orbitAngle = Math.random() * Math.PI * 2;
+                this.orbitRadius = 220;
+                this.velocity = { x: 0, y: 0 };
+                this.damageFlash = 0;
+                this.recentDamage = 0;
+                this.recentDamageFade = 0;
+                this.alive = true;
+                this.invulnerable = false;
+                this.pulse = 0;
+                this.glowPulse = 0;
+                this.contactDamage = this.config.contactDamage || 35;
+                this.bulletDamage = this.config.enemyBulletDamage || 15;
+                this.rocketDamage = this.config.rocketDamage || 25;
+                this.mineDamage = this.config.mineDamage || 25;
+                this.dashDistance = this.config.dashDistance || 280;
+                this.dashState = {
+                    active: false,
+                    progress: 0,
+                    duration: 12,
+                    startX: this.x,
+                    startY: this.y,
+                    endX: this.x,
+                    endY: this.y
+                };
+                this._beamHitSet = new WeakSet();
+                const now = Date.now();
+                this.nextDashTime = now + 2600 + Math.random() * 1800;
+                this.nextBulletTime = now + 1000;
+                this.nextRocketTime = now + 2800;
+                this.nextMineTime = now + 4200;
+                this._lastPlayerX = game.player ? game.player.x : this.x;
+                this._lastPlayerY = game.player ? game.player.y : this.y;
+            }
+
+            _randomModeDuration() {
+                return 3500 + Math.random() * 2200;
+            }
+
+            _chooseNextMode(now) {
+                const modes = ['orbit', 'mirror', 'flee'];
+                let candidate = this.mode;
+                for (let attempt = 0; attempt < 5 && candidate === this.mode; attempt++) {
+                    candidate = modes[Math.floor(Math.random() * modes.length)];
+                }
+                this.mode = candidate;
+                this.modeExpiresAt = now + this._randomModeDuration();
+                if (this.mode === 'orbit') {
+                    this.orbitRadius = 180 + Math.random() * 80;
+                } else if (this.mode === 'flee') {
+                    this.velocity.x *= 0.5;
+                    this.velocity.y *= 0.5;
+                }
+            }
+
+            _clampToBounds() {
+                const canvas = this.game.canvas;
+                const safeMinY = this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : 120;
+                const minY = Math.max(this.radius, safeMinY + this.radius * 0.25);
+                const maxY = canvas.height - this.radius;
+                const minX = this.radius;
+                const maxX = canvas.width - this.radius;
+                this.x = Math.max(minX, Math.min(maxX, this.x));
+                this.y = Math.max(minY, Math.min(maxY, this.y));
+            }
+
+            _startDash(now, player) {
+                if (!player) return false;
+                const dx = player.x - this.x;
+                const dy = player.y - this.y;
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                const distance = this.dashDistance;
+                const targetX = this.x + (dx / len) * distance;
+                const targetY = this.y + (dy / len) * distance;
+                const canvas = this.game.canvas;
+                const safeMinY = this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : 120;
+                const minY = Math.max(this.radius, safeMinY + this.radius * 0.25);
+                const endX = Math.max(this.radius, Math.min(canvas.width - this.radius, targetX));
+                const endY = Math.max(minY, Math.min(canvas.height - this.radius, targetY));
+                this.dashState.active = true;
+                this.dashState.progress = 0;
+                this.dashState.startX = this.x;
+                this.dashState.startY = this.y;
+                this.dashState.endX = endX;
+                this.dashState.endY = endY;
+                this.invulnerable = true;
+                this.nextDashTime = now + 3200 + Math.random() * 2400;
+                if (this.game.effects && this.game.effects.createEnemyDashEffect) {
+                    this.game.effects.createEnemyDashEffect(this.x, this.y, endX, endY);
+                }
+                if (this.game.audio) this.game.audio.playSound('enemyDash');
+                this.velocity.x = 0;
+                this.velocity.y = 0;
+                return true;
+            }
+
+            _updateOrbit(player, timeScale) {
+                if (!player) return;
+                this.orbitAngle = (this.orbitAngle + 0.02 * timeScale) % (Math.PI * 2);
+                const radius = this.orbitRadius + Math.sin(this.orbitAngle * 2.3) * 24;
+                const targetX = player.x + Math.cos(this.orbitAngle) * radius;
+                const targetY = player.y + Math.sin(this.orbitAngle) * radius;
+                const lerp = Math.min(1, 0.15 * timeScale);
+                this.x += (targetX - this.x) * lerp;
+                this.y += (targetY - this.y) * lerp;
+                this.velocity.x = targetX - this.x;
+                this.velocity.y = targetY - this.y;
+            }
+
+            _updateMirror(player) {
+                if (!player) return;
+                const playerDx = player.x - this._lastPlayerX;
+                const playerDy = player.y - this._lastPlayerY;
+                const factor = 1.05;
+                this.x -= playerDx * factor;
+                this.y -= playerDy * factor;
+                const offsetX = this.x - player.x;
+                const offsetY = this.y - player.y;
+                const dist = Math.sqrt(offsetX * offsetX + offsetY * offsetY) || 1;
+                const targetDistance = 190;
+                const adjust = (targetDistance - dist) * 0.1;
+                this.x += (offsetX / dist) * adjust;
+                this.y += (offsetY / dist) * adjust;
+                this.velocity.x = -playerDx;
+                this.velocity.y = -playerDy;
+            }
+
+            _updateFlee(player, timeScale, motion) {
+                if (!player) return;
+                const dx = this.x - player.x;
+                const dy = this.y - player.y;
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                const accel = 0.25 * timeScale;
+                this.velocity.x += (dx / len) * accel;
+                this.velocity.y += (dy / len) * accel;
+                const maxSpeed = (this.speed || 5) * 1.4;
+                const velLen = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
+                if (velLen > maxSpeed) {
+                    const s = maxSpeed / velLen;
+                    this.velocity.x *= s;
+                    this.velocity.y *= s;
+                }
+                this.x += this.velocity.x * motion;
+                this.y += this.velocity.y * motion;
+                const safeMinY = this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : 120;
+                const minY = Math.max(this.radius, safeMinY + this.radius * 0.25);
+                const canvas = this.game.canvas;
+                if (this.x <= this.radius || this.x >= canvas.width - this.radius) {
+                    this.velocity.x *= -0.6;
+                }
+                if (this.y <= minY || this.y >= canvas.height - this.radius) {
+                    this.velocity.y *= -0.6;
+                }
+                const friction = Math.pow(0.92, timeScale);
+                this.velocity.x *= friction;
+                this.velocity.y *= friction;
+            }
+
+            _maybeFireBullet(now, player) {
+                if (!player || now < this.nextBulletTime || !Array.isArray(this.game.enemyBullets)) return;
+                const dx = player.x - this.x;
+                const dy = player.y - this.y;
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                const speed = 8.5;
+                this.game.enemyBullets.push(new EnemyBullet(
+                    this.x,
+                    this.y,
+                    (dx / len) * speed,
+                    (dy / len) * speed,
+                    this.bulletDamage,
+                    {
+                        fillColor: '#ff4a4a',
+                        strokeColor: '#ff1c1c',
+                        glowColor: 'rgba(255, 56, 56, 0.9)',
+                        trailColor: '#ff5f5f'
+                    }
+                ));
+                if (this.game.audio) this.game.audio.playSound('enemyShoot');
+                this.nextBulletTime = now + 2000;
+            }
+
+            _maybeFireRocket(now, player) {
+                if (!player || now < this.nextRocketTime || !Array.isArray(this.game.enemyRockets)) return;
+                const rocket = new EnemyRocket(this.x, this.y, player.x, player.y, this.rocketDamage, {
+                    trailColor: '#ff6060',
+                    glowColor: 'rgba(255, 64, 64, 0.9)',
+                    aoeRadius: 110
+                });
+                this.game.enemyRockets.push(rocket);
+                if (this.game.audio) this.game.audio.playSound('RocketLaunch');
+                this.nextRocketTime = now + 6000;
+            }
+
+            _maybePlaceMine(now) {
+                if (now < this.nextMineTime || !Array.isArray(this.game.enemyMines)) return;
+                const mine = new EnemyMine(this.x, this.y, this.radius, this.mineDamage, {
+                    glowColor: 'rgba(255, 60, 60, 0.9)',
+                    aoeRadius: 110
+                });
+                this.game.enemyMines.push(mine);
+                if (this.game.audio) this.game.audio.playSound('mine_placed');
+                this.nextMineTime = now + 10000;
+            }
+
+            update() {
+                if (!this.alive) return;
+                const player = this.game.player;
+                const now = Date.now();
+                const timeScale = getTimeScale();
+                const motion = getMotionScale();
+                if (this.damageFlash > 0) this.damageFlash = Math.max(0, this.damageFlash - timeScale);
+                if (this.recentDamageFade > 0) this.recentDamageFade = Math.max(0, this.recentDamageFade - timeScale);
+                this.pulse = (this.pulse + 0.04 * timeScale) % (Math.PI * 2);
+                this.glowPulse = (this.glowPulse + 0.03 * timeScale) % (Math.PI * 2);
+                if (!this.dashState.active && now >= this.nextDashTime) {
+                    this._startDash(now, player);
+                }
+                if (this.dashState.active) {
+                    this.dashState.progress += timeScale;
+                    const ratio = Math.min(1, this.dashState.progress / this.dashState.duration);
+                    this.x = this.dashState.startX + (this.dashState.endX - this.dashState.startX) * ratio;
+                    this.y = this.dashState.startY + (this.dashState.endY - this.dashState.startY) * ratio;
+                    if (ratio >= 1) {
+                        this.dashState.active = false;
+                        this.invulnerable = false;
+                        this.dashState.progress = 0;
+                    }
+                } else {
+                    if (now >= this.modeExpiresAt) {
+                        this._chooseNextMode(now);
+                    }
+                    if (this.mode === 'orbit') {
+                        this._updateOrbit(player, timeScale);
+                    } else if (this.mode === 'mirror') {
+                        this._updateMirror(player);
+                    } else {
+                        this._updateFlee(player, timeScale, motion);
+                    }
+                }
+                this._clampToBounds();
+                if (player) {
+                    this._maybeFireBullet(now, player);
+                    this._maybeFireRocket(now, player);
+                    this._maybePlaceMine(now);
+                    this._lastPlayerX = player.x;
+                    this._lastPlayerY = player.y;
+                }
+            }
+
+            takeDamage(amount, effects, audio, metadata = {}) {
+                if (!this.alive || this.invulnerable || amount <= 0) return false;
+                this.health = Math.max(0, this.health - amount);
+                this.damageFlash = 12;
+                this.recentDamage = amount;
+                this.recentDamageFade = 45;
+                const impactX = metadata.impactX != null ? metadata.impactX : this.x;
+                const impactY = metadata.impactY != null ? metadata.impactY : this.y;
+                if (effects && typeof effects.createHitEffect === 'function') {
+                    effects.createHitEffect(impactX, impactY);
+                    if (typeof effects.createDamageLabel === 'function') {
+                        effects.createDamageLabel(impactX, impactY - this.radius - 18, amount, false);
+                    }
+                }
+                if (audio) audio.playSound('boss_hit');
+                if (this.health <= 0) {
+                    this._onDefeated(effects, audio);
+                    return false;
+                }
+                return true;
+            }
+
+            handlePlayerBullet(bullet, effects, audio) {
+                if (!bullet) return false;
+                const radius = (bullet.radius || 6) + this.radius;
+                const dx = bullet.x - this.x;
+                const dy = bullet.y - this.y;
+                if (dx * dx + dy * dy <= radius * radius) {
+                    this.takeDamage(bullet.damage || 0, effects, audio, { impactX: bullet.x, impactY: bullet.y });
+                    return true;
+                }
+                return false;
+            }
+
+            handleRailgunBeam(effect, effects, audio) {
+                if (!effect || !this.alive || typeof effect.intersectsCircle !== 'function') return false;
+                if (this._beamHitSet && this._beamHitSet.has(effect)) return false;
+                if (effect.intersectsCircle(this.x, this.y, this.radius, this)) {
+                    if (this._beamHitSet) this._beamHitSet.add(effect);
+                    this.takeDamage(effect.damage || 0, effects, audio, { impactX: this.x, impactY: this.y });
+                    return true;
+                }
+                return false;
+            }
+
+            handleAoeDamage(x, y, radius, damage, effects, audio) {
+                if (!this.alive || damage <= 0) return;
+                const limit = this.radius + radius;
+                const dx = this.x - x;
+                const dy = this.y - y;
+                if (dx * dx + dy * dy <= limit * limit) {
+                    this.takeDamage(damage, effects, audio, { impactX: (this.x + x) / 2, impactY: (this.y + y) / 2 });
+                }
+            }
+
+            checkPlayerCollision(player, effects, audio) {
+                if (!this.alive || !player || player.invulnerable || player.isDashing) return;
+                const dx = player.x - this.x;
+                const dy = player.y - this.y;
+                const limit = player.radius + this.radius;
+                if (dx * dx + dy * dy <= limit * limit) {
+                    const impactX = (player.x + this.x) / 2;
+                    const impactY = (player.y + this.y) / 2;
+                    player.takeDamage(this.contactDamage, impactX, impactY, effects, audio);
+                }
+            }
+
+            _onDefeated(effects, audio) {
+                if (!this.alive) return;
+                this.alive = false;
+                if (audio) audio.playSound('bossDefeated');
+                if (effects) {
+                    if (typeof effects.createExplosion === 'function') {
+                        effects.createExplosion(this.x, this.y, 'circle', this.radius * 2.2);
+                    }
+                    if (typeof effects.createEnemyRocketExplosionRing === 'function') {
+                        effects.createEnemyRocketExplosionRing(this.x, this.y, this.radius * 3);
+                    }
+                    const xpAmount = this.config.xp || 0;
+                    if (xpAmount > 0 && typeof effects.createXPRing === 'function') {
+                        effects.createXPRing(this.x, this.y, this.radius * 1.2, xpAmount);
+                    }
+                }
+                if (this.game) {
+                    const points = this.config.points || 0;
+                    this.game.score += points;
+                    if (this.game.uiManager && this.game.uiManager.showScoreAddition) {
+                        this.game.uiManager.showScoreAddition(points);
+                    }
+                    this.game.enemiesKilled = (this.game.enemiesKilled || 0) + 1;
+                    if (Array.isArray(this.game.enemyRockets)) this.game.enemyRockets.length = 0;
+                    if (Array.isArray(this.game.enemyMines)) this.game.enemyMines.length = 0;
+                }
+            }
+
+            draw(ctx) {
+                if (!ctx) return;
+                ctx.save();
+                const glowColor = this.config.glowColor || 'rgba(255, 64, 64, 0.85)';
+                const pulseScale = 1 + 0.05 * Math.sin(this.pulse);
+                const drawRadius = this.radius * pulseScale;
+                ctx.shadowColor = glowColor;
+                ctx.shadowBlur = 24 + 6 * Math.sin(this.glowPulse * 1.6);
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, drawRadius, 0, Math.PI * 2);
+                ctx.fillStyle = this.damageFlash > 0 ? '#ffffff' : (this.config.fillColor || '#ff2e2e');
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = this.config.strokeColor || '#c40000';
+                ctx.stroke();
+                ctx.restore();
+                this._drawHealthBar(ctx);
+            }
+
+            _drawHealthBar(ctx) {
+                const width = 180;
+                const height = 10;
+                const offset = this.radius + 38;
+                ctx.save();
+                ctx.fillStyle = 'rgba(40, 0, 0, 0.65)';
+                ctx.fillRect(this.x - width / 2, this.y - offset, width, height);
+                const pct = this.maxHealth > 0 ? Math.max(0, Math.min(1, this.health / this.maxHealth)) : 0;
+                ctx.fillStyle = '#ff4242';
+                ctx.fillRect(this.x - width / 2, this.y - offset, width * pct, height);
+                if (this.recentDamageFade > 0 && this.maxHealth > 0) {
+                    const alpha = this.recentDamageFade / 45;
+                    const recentPct = Math.min(1, (this.recentDamage || 0) / this.maxHealth);
+                    const overlayStart = this.x - width / 2 + width * pct;
+                    const overlayWidth = width * recentPct;
+                    ctx.fillStyle = `rgba(255, 255, 255, ${0.85 * alpha})`;
+                    ctx.fillRect(overlayStart, this.y - offset, overlayWidth, height);
+                }
+                ctx.restore();
+            }
+
+            isDefeated() {
+                return !this.alive;
+            }
+        }
+
         // UI Manager for handling UI visibility
         class UIManager {
             constructor() {
@@ -5587,6 +6126,13 @@
                     if (this.uiManager && this.uiManager.hideBossWarning) this.uiManager.hideBossWarning();
                     return;
                 }
+
+                  if (chosen === 'player_2_boss') {
+                      this.activeBoss = new PlayerTwoBoss(this);
+                        clearPendingBoss();
+                      if (this.uiManager && this.uiManager.hideBossWarning) this.uiManager.hideBossWarning();
+                      return;
+                  }
 
                 if (chosen === 'tetris_cross_boss') {
                     // Custom boss instantiation
@@ -6236,6 +6782,8 @@
                   this.rockets = [];
                   this.mines = [];
                   this.enemyBullets = [];
+                    this.enemyRockets = [];
+                    this.enemyMines = [];
                   this.enemies = [];
                 this.effects = new EffectsManager();
                 this.score = 0;
@@ -6791,6 +7339,17 @@
                 this.maybeSpawnXpReward(enemy);
             }
 
+            _applyEnemyExplosionDamage(x, y, radius, damage) {
+                const player = this.player;
+                if (!player || player.invulnerable) return;
+                const limit = player.radius + radius;
+                const dx = player.x - x;
+                const dy = player.y - y;
+                if (dx * dx + dy * dy <= limit * limit) {
+                    player.takeDamage(damage, x, y, this.effects, this.audio);
+                }
+            }
+
             shouldSuppressXpDropForEnemy(enemy) {
                 if (!enemy) return false;
                 if (!(this.inBossPhase && this.activeBoss && this.activeBoss.type === 'rhombus_boss')) {
@@ -7047,6 +7606,8 @@
                     this.tetrisManager.update();
                 } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
                     this.activeBoss.update();
+                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                    this.activeBoss.update();
                 }
                 
                 // Update background parallax based on player movement
@@ -7089,7 +7650,49 @@
                                     }
                                 }
                               }
-                              if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
+                                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                    const boss = this.activeBoss;
+                                    const bossRadius = boss.radius || 0;
+                                    const dxBoss = boss.x - r.x;
+                                    const dyBoss = boss.y - r.y;
+                                    const rrBoss = (r.radius || 0) + bossRadius;
+                                    if (dxBoss * dxBoss + dyBoss * dyBoss <= rrBoss * rrBoss) {
+                                        const exploded = this.rockets.splice(ri, 1)[0];
+                                        const ex = exploded ? exploded.x : r.x;
+                                        const ey = exploded ? exploded.y : r.y;
+                                        const aoe = exploded ? exploded.aoeRadius : r.aoeRadius;
+                                        const damage = exploded ? exploded.damage : r.damage;
+                                        if (exploded && this.effects && this.effects.createRocketExplosionRing) {
+                                            this.effects.createRocketExplosionRing(ex, ey, aoe);
+                                            this.audio.playSound('RocketExplotion');
+                                            if (this.shakeCanvas) this.shakeCanvas(7, 260);
+                                        }
+                                        for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
+                                            const en = this.enemies[ej];
+                                            if (!en) continue;
+                                            const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
+                                            const combinedRadius = aoe + enemyRadius;
+                                            const ddx = en.x - ex;
+                                            const ddy = en.y - ey;
+                                            if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
+                                            if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
+                                                if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
+                                                if (!en.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
+                                                    damageType: 'rocket',
+                                                    impactX: ex,
+                                                    impactY: ey
+                                                })) {
+                                                    this.handleEnemyKilled(en, { cause: 'rocket', impactX: ex, impactY: ey });
+                                                }
+                                            }
+                                        }
+                                        if (this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                            this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
+                                        }
+                                        continue outerRocket;
+                                    }
+                                }
+                                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
                                   // Apply AoE to Tetris Cross boss pieces
                                   for (let p = this.tetrisManager.activePieces.length - 1; p >= 0; p--) {
                                       const piece = this.tetrisManager.activePieces[p];
@@ -7109,13 +7712,37 @@
                                           }
                                       }
                                   }
-                              } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                    this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
+                                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
                                   this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
                               }
                         }
                     }
                     this.rockets.length = write;
                 }
+                  // Update enemy rockets
+                  {
+                      let write = 0;
+                      for (let read = 0; read < this.enemyRockets.length; read++) {
+                          const rocket = this.enemyRockets[read];
+                          if (!rocket) continue;
+                          if (rocket.update(this.canvas, this.effects, this.player)) {
+                              this.enemyRockets[write++] = rocket;
+                          } else {
+                              const explosionX = rocket.x;
+                              const explosionY = rocket.y;
+                              const explosionRadius = rocket.aoeRadius;
+                              if (this.effects && this.effects.createEnemyRocketExplosionRing) {
+                                  this.effects.createEnemyRocketExplosionRing(explosionX, explosionY, explosionRadius);
+                              }
+                              if (this.audio) this.audio.playSound('RocketExplotion');
+                              if (this.shakeCanvas) this.shakeCanvas(5, 220);
+                              this._applyEnemyExplosionDamage(explosionX, explosionY, explosionRadius, rocket.damage);
+                          }
+                      }
+                      this.enemyRockets.length = write;
+                  }
                 // Update mines
                 {
                     let write = 0;
@@ -7152,13 +7779,78 @@
                                     }
                                 }
                             }
-                              if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
-                                  this.activeBoss.handleAoeDamage(m.x, m.y, m.aoeRadius, m.damage, this.effects, this.audio);
-                              }
+                                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                    const boss = this.activeBoss;
+                                    const bossRadius = boss.radius || 0;
+                                    const dxBoss = boss.x - m.x;
+                                    const dyBoss = boss.y - m.y;
+                                    const rrBoss = (m.radius || 0) + bossRadius;
+                                    if (dxBoss * dxBoss + dyBoss * dyBoss <= rrBoss * rrBoss) {
+                                        const exploded = this.mines.splice(mi, 1)[0];
+                                        const ex = exploded ? exploded.x : m.x;
+                                        const ey = exploded ? exploded.y : m.y;
+                                        const aoe = exploded ? exploded.aoeRadius : m.aoeRadius;
+                                        const damage = exploded ? exploded.damage : m.damage;
+                                        if (exploded && this.effects && this.effects.createRocketExplosionRing) {
+                                            this.effects.createRocketExplosionRing(ex, ey, aoe);
+                                            this.audio.playSound('RocketExplotion');
+                                            if (this.shakeCanvas) this.shakeCanvas(7, 240);
+                                        }
+                                        for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
+                                            const en = this.enemies[ej];
+                                            if (!en) continue;
+                                            const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
+                                            const combinedRadius = aoe + enemyRadius;
+                                            const ddx = en.x - ex;
+                                            const ddy = en.y - ey;
+                                            if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
+                                            if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
+                                                if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
+                                                if (!en.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
+                                                    damageType: 'mine',
+                                                    impactX: ex,
+                                                    impactY: ey
+                                                })) {
+                                                    this.handleEnemyKilled(en, { cause: 'mine', impactX: ex, impactY: ey });
+                                                }
+                                            }
+                                        }
+                                        if (this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                            this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
+                                        }
+                                        continue outerMine;
+                                    } else {
+                                        this.activeBoss.handleAoeDamage(m.x, m.y, m.aoeRadius, m.damage, this.effects, this.audio);
+                                    }
+                                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                    this.activeBoss.handleAoeDamage(m.x, m.y, m.aoeRadius, m.damage, this.effects, this.audio);
+                                }
                         }
                     }
                     this.mines.length = write;
                 }
+                  // Update enemy mines
+                  {
+                      let write = 0;
+                      for (let read = 0; read < this.enemyMines.length; read++) {
+                          const mine = this.enemyMines[read];
+                          if (!mine) continue;
+                          if (mine.update(this.canvas, this.effects, this.player)) {
+                              this.enemyMines[write++] = mine;
+                          } else {
+                              const explosionX = mine.x;
+                              const explosionY = mine.y;
+                              const explosionRadius = mine.aoeRadius;
+                              if (this.effects && this.effects.createEnemyRocketExplosionRing) {
+                                  this.effects.createEnemyRocketExplosionRing(explosionX, explosionY, explosionRadius);
+                              }
+                              if (this.audio) this.audio.playSound('RocketExplotion');
+                              if (this.shakeCanvas) this.shakeCanvas(5, 200);
+                              this._applyEnemyExplosionDamage(explosionX, explosionY, explosionRadius, mine.damage);
+                          }
+                      }
+                      this.enemyMines.length = write;
+                  }
                 // In-place compaction for bullets
                 {
                     let write = 0;
@@ -7520,6 +8212,21 @@
                     }
                 }
 
+                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                    for (let j = this.bullets.length - 1; j >= 0; j--) {
+                        const b = this.bullets[j];
+                        if (!b || b._dead) continue;
+                        if (this.activeBoss.handlePlayerBullet(b, this.effects, this.audio)) {
+                            b._dead = true;
+                        }
+                    }
+                    for (let j = this.effects.effects.length - 1; j >= 0; j--) {
+                        const effect = this.effects.effects[j];
+                        if (effect.type !== 'railgunBeam') continue;
+                        this.activeBoss.handleRailgunBeam(effect, this.effects, this.audio);
+                    }
+                }
+
                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
                     for (let j = this.bullets.length - 1; j >= 0; j--) {
                         const b = this.bullets[j];
@@ -7636,6 +8343,10 @@
                     }
                 }
 
+                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                    this.activeBoss.checkPlayerCollision(this.player, this.effects, this.audio);
+                }
+
                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss && !this.player.isDashing) {
                     this.activeBoss.checkPlayerCollision(this.player, this.effects, this.audio);
                 }
@@ -7691,6 +8402,8 @@
                 
                 // If custom boss died outside of loop, close phase
                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss && !this.activeBoss.active) {
+                    this.onBossDefeated();
+                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss && this.activeBoss.isDefeated()) {
                     this.onBossDefeated();
                 } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss && this.activeBoss.isDefeated()) {
                     this.onBossDefeated();
@@ -7812,17 +8525,27 @@
 				}
                 this.effects.draw(this.ctx, this.score, this.player.x, this.player.y, this.bullets);
                 // Draw rockets above effects but before player
-                for (let i = 0; i < this.rockets.length; i++) {
-                    const r = this.rockets[i];
-                    if (r) r.draw(this.ctx);
-                }
-                // Draw mines above effects but before player
-                if (this.mines) {
-                    for (let i = 0; i < this.mines.length; i++) {
-                        const m = this.mines[i];
-                        if (m) m.draw(this.ctx);
-                    }
-                }
+                  for (let i = 0; i < this.rockets.length; i++) {
+                      const r = this.rockets[i];
+                      if (r) r.draw(this.ctx);
+                  }
+                  for (let i = 0; i < this.enemyRockets.length; i++) {
+                      const er = this.enemyRockets[i];
+                      if (er) er.draw(this.ctx);
+                  }
+                  // Draw mines above effects but before player
+                  if (this.mines) {
+                      for (let i = 0; i < this.mines.length; i++) {
+                          const m = this.mines[i];
+                          if (m) m.draw(this.ctx);
+                      }
+                  }
+                  if (this.enemyMines) {
+                      for (let i = 0; i < this.enemyMines.length; i++) {
+                          const em = this.enemyMines[i];
+                          if (em) em.draw(this.ctx);
+                      }
+                  }
                 this.player.draw(this.ctx);
                 
                 // Draw custom crosshair
