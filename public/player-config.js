@@ -215,7 +215,7 @@
             key: 'explosion_area_2',
             level: 8,
             title: 'EXPLOSION 2',
-            desc: '+10% Rocket & Mine Area'',
+            desc: '+10% Rocket & Mine Area',
             image: 'Upgrade Icons/area_damage_size.png',
             category: 'explosion_area',
             apply(game) {
@@ -229,7 +229,7 @@
             key: 'explosion_area_3',
             level: 12,
             title: 'EXPLOSION 3',
-            desc: '+10% Rocket & Mine Area'',
+            desc: '+10% Rocket & Mine Area',
             image: 'Upgrade Icons/area_damage_size.png',
             category: 'explosion_area',
             apply(game) {
