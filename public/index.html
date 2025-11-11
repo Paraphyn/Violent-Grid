@@ -5906,6 +5906,851 @@
             }
         }
 
+        class PingAndPongBoss {
+            constructor(game) {
+                this.game = game;
+                this.config = ENEMY_TYPES['ping_and_pong_boss'] || {};
+                this.type = 'ping_and_pong_boss';
+                const canvas = game.canvas;
+                const radius = this.config.ballRadius || Math.max(40, (this.config.size || 80) / 2);
+                const safeMinY = this._getSafeMinY();
+                const startY = Math.max(safeMinY + radius, canvas.height * 0.35);
+                const ballHealth = this.config.ballHealth || this.config.health || 5000;
+                const baseSpeed = this.config.ballBaseSpeed || 6;
+                const directionX = Math.random() < 0.5 ? -1 : 1;
+                const directionY = Math.random() < 0.5 ? -1 : 1;
+                this.ball = {
+                    x: canvas.width / 2,
+                    y: startY,
+                    radius,
+                    speed: baseSpeed,
+                    maxSpeed: this.config.ballMaxSpeed || Math.max(baseSpeed, 14),
+                    vx: directionX * baseSpeed * 0.7071,
+                    vy: directionY * baseSpeed * 0.7071,
+                    health: ballHealth,
+                    maxHealth: ballHealth,
+                    damageFlash: 0,
+                    recentDamage: 0,
+                    recentDamageFade: 0
+                };
+                const norm = Math.hypot(this.ball.vx, this.ball.vy) || 1;
+                this.ball.vx = (this.ball.vx / norm) * baseSpeed;
+                this.ball.vy = (this.ball.vy / norm) * baseSpeed;
+                const paddleWidth = this.config.paddleWidth || 20;
+                const paddleHeight = this.config.paddleHeight || 80;
+                const inset = Math.max(24, this.config.barrierInset || 56);
+                this.leftPaddle = {
+                    x: inset + paddleWidth / 2,
+                    y: this.ball.y,
+                    width: paddleWidth,
+                    height: paddleHeight,
+                    damageFlash: 0
+                };
+                this.rightPaddle = {
+                    x: canvas.width - inset - paddleWidth / 2,
+                    y: this.ball.y,
+                    width: paddleWidth,
+                    height: paddleHeight,
+                    damageFlash: 0
+                };
+                this.extraBalls = [];
+                this.alive = true;
+                this.energyWaveInterval = Math.max(500, this.config.energyWaveIntervalMs || 4000);
+                this.energyWaveDamage = this.config.energyWaveDamage != null ? this.config.energyWaveDamage : (this.config.ballContactDamage || 25);
+                this.lastEnergyWaveTime = Date.now();
+                this.nextExtraBallTime = null;
+                this.lastPaddleHitTime = 0;
+                this.extraBallMaxBounces = this.config.extraBallMaxBounces || 8;
+                this.maxExtraBalls = this.config.maxExtraBalls || 4;
+                this.extraBallExplosionRadius = this.config.extraBallExplosionRadius || 120;
+                this.extraBallExplosionDamage = this.config.extraBallExplosionDamage || 25;
+                this.extraBallContactDamage = this.config.extraBallContactDamage || 25;
+                this.paddleDamage = this.config.paddleDamage || 300;
+                this.ballContactDamage = this.config.ballContactDamage || 25;
+                this._beamHitRegistry = new WeakMap();
+                this.x = this.ball.x;
+                this.y = this.ball.y;
+                this.radius = this.ball.radius;
+            }
+
+            _getSafeMinY() {
+                if (this.game && typeof this.game.getBossSafeMinCenterY === 'function') {
+                    return this.game.getBossSafeMinCenterY();
+                }
+                return 120;
+            }
+
+            _clamp(value, min, max) {
+                return Math.max(min, Math.min(max, value));
+            }
+
+            _circleCircleIntersect(ax, ay, ar, bx, by, br) {
+                const dx = ax - bx;
+                const dy = ay - by;
+                const limit = ar + br;
+                return dx * dx + dy * dy <= limit * limit;
+            }
+
+            _circleRectIntersect(cx, cy, radius, rect) {
+                if (!rect) return false;
+                const halfW = rect.width / 2;
+                const halfH = rect.height / 2;
+                const minX = rect.x - halfW;
+                const maxX = rect.x + halfW;
+                const minY = rect.y - halfH;
+                const maxY = rect.y + halfH;
+                const closestX = this._clamp(cx, minX, maxX);
+                const closestY = this._clamp(cy, minY, maxY);
+                const dx = cx - closestX;
+                const dy = cy - closestY;
+                return dx * dx + dy * dy <= radius * radius;
+            }
+
+            _closestPointOnRect(cx, cy, rect) {
+                const halfW = rect.width / 2;
+                const halfH = rect.height / 2;
+                const minX = rect.x - halfW;
+                const maxX = rect.x + halfW;
+                const minY = rect.y - halfH;
+                const maxY = rect.y + halfH;
+                return {
+                    x: this._clamp(cx, minX, maxX),
+                    y: this._clamp(cy, minY, maxY)
+                };
+            }
+
+            _getVerticalBounds() {
+                const canvas = this.game.canvas;
+                const safeMin = this._getSafeMinY();
+                const half = (this.config.paddleHeight || 80) / 2;
+                const top = Math.max(safeMin, half + 10);
+                const bottom = canvas.height - 10;
+                return { top, bottom };
+            }
+
+            _isBallAlignedWithPaddle(ball, paddle) {
+                if (!paddle) return false;
+                const effectiveHalf = paddle.height / 2 + ball.radius * 0.7;
+                return Math.abs(ball.y - paddle.y) <= effectiveHalf;
+            }
+
+            _bounceBallFromPaddle(paddle, ball, direction, now) {
+                if (!paddle || !ball) return;
+                paddle.damageFlash = 10;
+                const offset = this._clamp((ball.y - paddle.y) / (paddle.height / 2), -1, 1);
+                ball.x = paddle.x + direction * (paddle.width / 2 + ball.radius + 1);
+                ball.vx = Math.abs(ball.vx) * direction;
+                ball.vy += offset * ball.speed * 0.55;
+                const increment = this.config.ballSpeedIncrement || 0.4;
+                const maxSpeed = this.ball.maxSpeed || (ball.speed + increment);
+                ball.speed = this._clamp(ball.speed + increment, increment, maxSpeed);
+                const norm = Math.hypot(ball.vx, ball.vy) || 1;
+                ball.vx = (ball.vx / norm) * ball.speed;
+                ball.vy = (ball.vy / norm) * ball.speed;
+                this.lastPaddleHitTime = now;
+                this.nextExtraBallTime = now + (this.config.extraBallSpawnDelayMs || 10000);
+                if (this.game.effects && typeof this.game.effects.createShieldImpact === 'function') {
+                    this.game.effects.createShieldImpact(ball.x - direction * ball.radius * 0.6, ball.y, Math.max(30, paddle.height * 0.6), 'paddle');
+                }
+                if (this.game.audio) this.game.audio.playSound('enemyDash');
+            }
+
+            _handlePaddleCollisions(ball, now) {
+                if (!ball) return;
+                const leftPlane = this.leftPaddle.x + this.leftPaddle.width / 2;
+                if (ball.vx < 0 && ball.x - ball.radius <= leftPlane) {
+                    if (this._isBallAlignedWithPaddle(ball, this.leftPaddle)) {
+                        this._bounceBallFromPaddle(this.leftPaddle, ball, 1, now);
+                    } else {
+                        ball.x = leftPlane + ball.radius;
+                        ball.vx = Math.abs(ball.vx);
+                    }
+                }
+                const rightPlane = this.rightPaddle.x - this.rightPaddle.width / 2;
+                if (ball.vx > 0 && ball.x + ball.radius >= rightPlane) {
+                    if (this._isBallAlignedWithPaddle(ball, this.rightPaddle)) {
+                        this._bounceBallFromPaddle(this.rightPaddle, ball, -1, now);
+                    } else {
+                        ball.x = rightPlane - ball.radius;
+                        ball.vx = -Math.abs(ball.vx);
+                    }
+                }
+            }
+
+            _updateBall(now, motion, timeScale) {
+                const ball = this.ball;
+                ball.x += ball.vx * motion;
+                ball.y += ball.vy * motion;
+                const canvas = this.game.canvas;
+                const safeTop = this._getSafeMinY() + ball.radius;
+                const topLimit = Math.max(ball.radius, safeTop);
+                const bottomLimit = canvas.height - ball.radius;
+                if (ball.y < topLimit) {
+                    ball.y = topLimit;
+                    ball.vy = Math.abs(ball.vy);
+                } else if (ball.y > bottomLimit) {
+                    ball.y = bottomLimit;
+                    ball.vy = -Math.abs(ball.vy);
+                }
+                this._handlePaddleCollisions(ball, now);
+                const leftLimit = ball.radius;
+                const rightLimit = canvas.width - ball.radius;
+                if (ball.x < leftLimit) {
+                    ball.x = leftLimit;
+                    ball.vx = Math.abs(ball.vx);
+                } else if (ball.x > rightLimit) {
+                    ball.x = rightLimit;
+                    ball.vx = -Math.abs(ball.vx);
+                }
+                if (ball.damageFlash > 0) ball.damageFlash = Math.max(0, ball.damageFlash - timeScale);
+                if (ball.recentDamageFade > 0) ball.recentDamageFade = Math.max(0, ball.recentDamageFade - timeScale);
+            }
+
+            _updatePaddles(timeScale) {
+                const lerpBase = this.config.paddleFollowLerp || 0.18;
+                const lerpFactor = 1 - Math.pow(Math.max(0, 1 - lerpBase), Math.max(1, timeScale));
+                const bounds = this._getVerticalBounds();
+                const leftHalf = this.leftPaddle.height / 2;
+                const rightHalf = this.rightPaddle.height / 2;
+                this.leftPaddle.y += (this.ball.y - this.leftPaddle.y) * lerpFactor;
+                this.rightPaddle.y += (this.ball.y - this.rightPaddle.y) * lerpFactor;
+                this.leftPaddle.y = this._clamp(this.leftPaddle.y, bounds.top + leftHalf, bounds.bottom - leftHalf);
+                this.rightPaddle.y = this._clamp(this.rightPaddle.y, bounds.top + rightHalf, bounds.bottom - rightHalf);
+                if (this.leftPaddle.damageFlash > 0) this.leftPaddle.damageFlash = Math.max(0, this.leftPaddle.damageFlash - timeScale);
+                if (this.rightPaddle.damageFlash > 0) this.rightPaddle.damageFlash = Math.max(0, this.rightPaddle.damageFlash - timeScale);
+            }
+
+            _spawnExtraBall() {
+                if (!this.alive) return;
+                if (this.extraBalls.length >= this.maxExtraBalls) return;
+                const radius = this.config.extraBallRadius || 26;
+                const speed = this.config.extraBallSpeed || 7.5;
+                const baseAngle = Math.atan2(this.ball.vy, this.ball.vx);
+                const angle = baseAngle + (Math.random() - 0.5) * (Math.PI / 3);
+                const extra = {
+                    x: this.ball.x,
+                    y: this.ball.y,
+                    radius,
+                    speed,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    health: this.config.extraBallHealth || 100,
+                    maxHealth: this.config.extraBallHealth || 100,
+                    bounceCount: 0,
+                    damageFlash: 0,
+                    recentDamage: 0,
+                    recentDamageFade: 0
+                };
+                this.extraBalls.push(extra);
+                if (this.game.effects) {
+                    this._createLaunchEffect(extra.x, extra.y);
+                }
+                if (this.game.audio) this.game.audio.playSound('enemyShoot');
+            }
+
+            _createLaunchEffect(x, y) {
+                if (!this.game || !this.game.effects || !this.game.effects.effects) return;
+                const life = 22;
+                this.game.effects.effects.push(new Effect('pingPongLaunch', x, y, {
+                    life,
+                    maxLife: life,
+                    radius: 12,
+                    opacity: 0.8,
+                    typeSpecificUpdate: function() {
+                        const t = getTimeScale();
+                        this.life -= t;
+                        const progress = 1 - (this.life / this.maxLife);
+                        this.radius = 12 + 28 * progress;
+                        this.opacity = Math.max(0, 0.8 - progress * 0.8);
+                        return this.life > 0;
+                    },
+                    typeSpecificDraw: function(ctx) {
+                        if (!ctx) return;
+                        ctx.save();
+                        ctx.globalAlpha = Math.max(0, this.opacity);
+                        ctx.strokeStyle = '#ff4455';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }));
+            }
+
+            _updateExtraBalls(motion, timeScale) {
+                const canvas = this.game.canvas;
+                const safeMinY = this._getSafeMinY();
+                for (let i = this.extraBalls.length - 1; i >= 0; i--) {
+                    const extra = this.extraBalls[i];
+                    extra.x += extra.vx * motion;
+                    extra.y += extra.vy * motion;
+                    let bounced = false;
+                    if (extra.x - extra.radius <= 0) {
+                        extra.x = extra.radius;
+                        extra.vx = Math.abs(extra.vx);
+                        extra.bounceCount++;
+                        bounced = true;
+                    } else if (extra.x + extra.radius >= canvas.width) {
+                        extra.x = canvas.width - extra.radius;
+                        extra.vx = -Math.abs(extra.vx);
+                        extra.bounceCount++;
+                        bounced = true;
+                    }
+                    const topLimit = Math.max(extra.radius, safeMinY + extra.radius);
+                    const bottomLimit = canvas.height - extra.radius;
+                    if (extra.y - extra.radius <= topLimit) {
+                        extra.y = topLimit;
+                        extra.vy = Math.abs(extra.vy);
+                        extra.bounceCount++;
+                        bounced = true;
+                    } else if (extra.y + extra.radius >= bottomLimit) {
+                        extra.y = bottomLimit;
+                        extra.vy = -Math.abs(extra.vy);
+                        extra.bounceCount++;
+                        bounced = true;
+                    }
+                    if (bounced && extra.bounceCount >= this.extraBallMaxBounces) {
+                        this._explodeExtraBall(extra, { withDamage: true });
+                        this.extraBalls.splice(i, 1);
+                        continue;
+                    }
+                    if (extra.damageFlash > 0) extra.damageFlash = Math.max(0, extra.damageFlash - timeScale);
+                    if (extra.recentDamageFade > 0) extra.recentDamageFade = Math.max(0, extra.recentDamageFade - timeScale);
+                }
+            }
+
+            _emitEnergyWave() {
+                const radius = this.config.energyWaveRadius || 150;
+                this._createEnergyWaveEffect(this.ball.x, this.ball.y, radius);
+                const player = this.game.player;
+                if (player && !player.invulnerable && !player.isDashing) {
+                    const dx = player.x - this.ball.x;
+                    const dy = player.y - this.ball.y;
+                    if (dx * dx + dy * dy <= radius * radius) {
+                        const impactX = (player.x + this.ball.x) / 2;
+                        const impactY = (player.y + this.ball.y) / 2;
+                        player.takeDamage(this.energyWaveDamage, impactX, impactY, this.game.effects, this.game.audio);
+                    }
+                }
+                if (this.game.audio) this.game.audio.playSound('enemyDash');
+            }
+
+            _createEnergyWaveEffect(x, y, maxRadius) {
+                if (!this.game || !this.game.effects || !this.game.effects.effects) return;
+                const life = 30;
+                this.game.effects.effects.push(new Effect('pingPongEnergyWave', x, y, {
+                    life,
+                    maxLife: life,
+                    radius: 0,
+                    maxRadius,
+                    opacity: 1,
+                    lineWidth: 5,
+                    typeSpecificUpdate: function() {
+                        const t = getTimeScale();
+                        this.life -= t;
+                        const progress = 1 - (this.life / this.maxLife);
+                        this.radius = this.maxRadius * Math.pow(progress, 0.78);
+                        this.opacity = Math.max(0, 0.9 - progress * 0.9);
+                        this.lineWidth = Math.max(1.5, 5 - 3.5 * progress);
+                        return this.life > 0;
+                    },
+                    typeSpecificDraw: function(ctx) {
+                        if (!ctx) return;
+                        ctx.save();
+                        ctx.globalAlpha = Math.max(0, this.opacity);
+                        ctx.strokeStyle = '#ff3344';
+                        ctx.lineWidth = this.lineWidth || 2;
+                        ctx.beginPath();
+                        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }));
+            }
+
+            _blockProjectile(x, y, effects, audio) {
+                const fx = effects || (this.game ? this.game.effects : null);
+                if (fx && typeof fx.createShieldImpact === 'function') {
+                    fx.createShieldImpact(x, y, Math.max(30, this.ball.radius * 0.9), 'shield');
+                } else if (fx && typeof fx.createBulletExplosion === 'function') {
+                    fx.createBulletExplosion(x, y, '#ff3344');
+                }
+                if (audio) audio.playSound('enemyDash');
+            }
+
+            blockCircularProjectile(circle, effects, audio) {
+                if (!circle) return false;
+                const fx = effects || (this.game ? this.game.effects : null);
+                const au = audio || (this.game ? this.game.audio : null);
+                if (this._circleRectIntersect(circle.x, circle.y, circle.radius, this.leftPaddle)) {
+                    this.leftPaddle.damageFlash = 10;
+                    this._blockProjectile(circle.x, circle.y, fx, au);
+                    return true;
+                }
+                if (this._circleRectIntersect(circle.x, circle.y, circle.radius, this.rightPaddle)) {
+                    this.rightPaddle.damageFlash = 10;
+                    this._blockProjectile(circle.x, circle.y, fx, au);
+                    return true;
+                }
+                return false;
+            }
+
+            interceptPlayerRocket(rocket, effects, audio) {
+                if (!rocket || !this.alive) return null;
+                const fx = effects || (this.game ? this.game.effects : null);
+                const au = audio || (this.game ? this.game.audio : null);
+                const circle = { x: rocket.x, y: rocket.y, radius: rocket.radius };
+                if (this.blockCircularProjectile(circle, fx, au)) {
+                    return {
+                        consumed: true,
+                        explosion: true,
+                        x: rocket.x,
+                        y: rocket.y,
+                        radius: rocket.aoeRadius,
+                        damage: rocket.damage,
+                        applyDamageToBoss: false
+                    };
+                }
+                if (this._circleCircleIntersect(rocket.x, rocket.y, rocket.radius, this.ball.x, this.ball.y, this.ball.radius)) {
+                    return {
+                        consumed: true,
+                        explosion: true,
+                        x: rocket.x,
+                        y: rocket.y,
+                        radius: rocket.aoeRadius,
+                        damage: rocket.damage,
+                        applyDamageToBoss: true
+                    };
+                }
+                for (let i = this.extraBalls.length - 1; i >= 0; i--) {
+                    const extra = this.extraBalls[i];
+                    if (!extra) continue;
+                    if (this._circleCircleIntersect(rocket.x, rocket.y, rocket.radius, extra.x, extra.y, extra.radius)) {
+                        const destroyed = this._damageExtraBall(extra, rocket.damage || 0, fx, au, rocket.x, rocket.y);
+                        if (destroyed) {
+                            this._explodeExtraBall(extra, { withDamage: false });
+                            this.extraBalls.splice(i, 1);
+                        }
+                        return {
+                            consumed: true,
+                            explosion: true,
+                            x: rocket.x,
+                            y: rocket.y,
+                            radius: rocket.aoeRadius,
+                            damage: rocket.damage,
+                            applyDamageToBoss: false
+                        };
+                    }
+                }
+                return null;
+            }
+
+            interceptPlayerMine(mine, effects, audio) {
+                if (!mine || !this.alive) return null;
+                const fx = effects || (this.game ? this.game.effects : null);
+                const au = audio || (this.game ? this.game.audio : null);
+                const circle = { x: mine.x, y: mine.y, radius: mine.radius };
+                if (this.blockCircularProjectile(circle, fx, au)) {
+                    return {
+                        consumed: true,
+                        explosion: true,
+                        x: mine.x,
+                        y: mine.y,
+                        radius: mine.aoeRadius,
+                        damage: mine.damage,
+                        applyDamageToBoss: false
+                    };
+                }
+                if (this._circleCircleIntersect(mine.x, mine.y, mine.radius, this.ball.x, this.ball.y, this.ball.radius)) {
+                    return {
+                        consumed: true,
+                        explosion: true,
+                        x: mine.x,
+                        y: mine.y,
+                        radius: mine.aoeRadius,
+                        damage: mine.damage,
+                        applyDamageToBoss: true
+                    };
+                }
+                for (let i = this.extraBalls.length - 1; i >= 0; i--) {
+                    const extra = this.extraBalls[i];
+                    if (!extra) continue;
+                    if (this._circleCircleIntersect(mine.x, mine.y, mine.radius, extra.x, extra.y, extra.radius)) {
+                        const destroyed = this._damageExtraBall(extra, mine.damage || 0, fx, au, mine.x, mine.y);
+                        if (destroyed) {
+                            this._explodeExtraBall(extra, { withDamage: false });
+                            this.extraBalls.splice(i, 1);
+                        }
+                        return {
+                            consumed: true,
+                            explosion: true,
+                            x: mine.x,
+                            y: mine.y,
+                            radius: mine.aoeRadius,
+                            damage: mine.damage,
+                            applyDamageToBoss: false
+                        };
+                    }
+                }
+                return null;
+            }
+
+            _damageExtraBall(extra, damage, effects, audio, impactX, impactY) {
+                if (!extra || damage <= 0) return false;
+                extra.health = Math.max(0, extra.health - damage);
+                extra.damageFlash = 10;
+                extra.recentDamage = damage;
+                extra.recentDamageFade = 35;
+                const fxX = impactX != null ? impactX : extra.x;
+                const fxY = impactY != null ? impactY : extra.y;
+                if (effects && typeof effects.createHitEffect === 'function') {
+                    effects.createHitEffect(fxX, fxY);
+                }
+                if (effects && typeof effects.createDamageLabel === 'function') {
+                    effects.createDamageLabel(extra.x, extra.y - extra.radius - 14, damage, false);
+                }
+                if (audio) audio.playSound('enemyHit');
+                return extra.health <= 0;
+            }
+
+            _explodeExtraBall(extra, options = {}) {
+                if (!extra) return;
+                const fx = this.game && this.game.effects;
+                const au = this.game && this.game.audio;
+                if (fx && typeof fx.createExplosion === 'function') {
+                    fx.createExplosion(extra.x, extra.y, 'ping_and_pong_boss', extra.radius * 1.5);
+                }
+                if (fx && fx.effects) {
+                    const life = 22;
+                    fx.effects.push(new Effect('pingPongExtraBlast', extra.x, extra.y, {
+                        life,
+                        maxLife: life,
+                        radius: 0,
+                        maxRadius: this.extraBallExplosionRadius,
+                        opacity: 0.9,
+                        typeSpecificUpdate: function() {
+                            const t = getTimeScale();
+                            this.life -= t;
+                            const progress = 1 - (this.life / this.maxLife);
+                            this.radius = this.maxRadius * Math.pow(progress, 0.8);
+                            this.opacity = Math.max(0, 0.9 - progress * 0.9);
+                            return this.life > 0;
+                        },
+                        typeSpecificDraw: function(ctx) {
+                            if (!ctx) return;
+                            ctx.save();
+                            ctx.globalAlpha = Math.max(0, this.opacity);
+                            ctx.fillStyle = 'rgba(255, 64, 64, 0.2)';
+                            ctx.beginPath();
+                            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                            ctx.fill();
+                            ctx.globalAlpha = Math.max(0, this.opacity);
+                            ctx.strokeStyle = '#ff5566';
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+                    }));
+                }
+                if (!options.silent && au) {
+                    au.playSound('enemyDeath');
+                }
+                if (options.withDamage) {
+                    const player = this.game && this.game.player;
+                    if (player && !player.invulnerable && !player.isDashing) {
+                        const dx = player.x - extra.x;
+                        const dy = player.y - extra.y;
+                        if (dx * dx + dy * dy <= this.extraBallExplosionRadius * this.extraBallExplosionRadius) {
+                            const impactX = (player.x + extra.x) / 2;
+                            const impactY = (player.y + extra.y) / 2;
+                            player.takeDamage(this.extraBallExplosionDamage, impactX, impactY, this.game.effects, au);
+                        }
+                    }
+                }
+            }
+
+            takeDamage(amount, effects, audio, metadata = {}) {
+                if (!this.alive || amount <= 0) return false;
+                this.ball.health = Math.max(0, this.ball.health - amount);
+                this.ball.damageFlash = 12;
+                this.ball.recentDamage = amount;
+                this.ball.recentDamageFade = 45;
+                const impactX = metadata.impactX != null ? metadata.impactX : this.ball.x;
+                const impactY = metadata.impactY != null ? metadata.impactY : this.ball.y;
+                if (effects && typeof effects.createHitEffect === 'function') {
+                    effects.createHitEffect(impactX, impactY);
+                }
+                if (effects && typeof effects.createDamageLabel === 'function') {
+                    effects.createDamageLabel(this.ball.x, this.ball.y - this.ball.radius - 22, amount, false);
+                }
+                if (audio) audio.playSound('boss_hit');
+                if (this.ball.health <= 0) {
+                    this._onDefeated(effects, audio);
+                    return false;
+                }
+                return true;
+            }
+
+            handlePlayerBullet(bullet, effects, audio) {
+                if (!bullet || !this.alive) return false;
+                const fx = effects || (this.game ? this.game.effects : null);
+                const au = audio || (this.game ? this.game.audio : null);
+                const radius = bullet.radius || 6;
+                if (this.blockCircularProjectile({ x: bullet.x, y: bullet.y, radius }, fx, au)) {
+                    return true;
+                }
+                if (this._circleCircleIntersect(bullet.x, bullet.y, radius, this.ball.x, this.ball.y, this.ball.radius)) {
+                    this.takeDamage(bullet.damage || 0, fx, au, { impactX: bullet.x, impactY: bullet.y });
+                    return true;
+                }
+                for (let i = this.extraBalls.length - 1; i >= 0; i--) {
+                    const extra = this.extraBalls[i];
+                    if (this._circleCircleIntersect(bullet.x, bullet.y, radius, extra.x, extra.y, extra.radius)) {
+                        const destroyed = this._damageExtraBall(extra, bullet.damage || 0, fx, au, bullet.x, bullet.y);
+                        if (destroyed) {
+                            this._explodeExtraBall(extra, { withDamage: false });
+                            this.extraBalls.splice(i, 1);
+                        }
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            _hasBeamHit(effect, target) {
+                const registry = this._beamHitRegistry.get(effect);
+                return registry ? registry.has(target) : false;
+            }
+
+            _markBeamHit(effect, target) {
+                let registry = this._beamHitRegistry.get(effect);
+                if (!registry) {
+                    registry = new WeakSet();
+                    this._beamHitRegistry.set(effect, registry);
+                }
+                registry.add(target);
+            }
+
+            handleRailgunBeam(effect, effects, audio) {
+                if (!effect || !this.alive || typeof effect.intersectsCircle !== 'function') return false;
+                const fx = effects || (this.game ? this.game.effects : null);
+                const au = audio || (this.game ? this.game.audio : null);
+                if (effect.intersectsCircle(this.ball.x, this.ball.y, this.ball.radius, this.ball) && !this._hasBeamHit(effect, this.ball)) {
+                    this._markBeamHit(effect, this.ball);
+                    this.takeDamage(effect.damage || 0, fx, au, { impactX: this.ball.x, impactY: this.ball.y });
+                }
+                for (let i = this.extraBalls.length - 1; i >= 0; i--) {
+                    const extra = this.extraBalls[i];
+                    if (effect.intersectsCircle(extra.x, extra.y, extra.radius, extra) && !this._hasBeamHit(effect, extra)) {
+                        this._markBeamHit(effect, extra);
+                        const destroyed = this._damageExtraBall(extra, effect.damage || 0, fx, au, extra.x, extra.y);
+                        if (destroyed) {
+                            this._explodeExtraBall(extra, { withDamage: false });
+                            this.extraBalls.splice(i, 1);
+                        }
+                    }
+                }
+                return false;
+            }
+
+            handleAoeDamage(x, y, radius, damage, effects, audio) {
+                if (!this.alive || damage <= 0) return;
+                const fx = effects || (this.game ? this.game.effects : null);
+                const au = audio || (this.game ? this.game.audio : null);
+                if (this._circleCircleIntersect(this.ball.x, this.ball.y, this.ball.radius, x, y, radius)) {
+                    this.takeDamage(damage, fx, au, { impactX: (this.ball.x + x) / 2, impactY: (this.ball.y + y) / 2 });
+                }
+                for (let i = this.extraBalls.length - 1; i >= 0; i--) {
+                    const extra = this.extraBalls[i];
+                    if (this._circleCircleIntersect(extra.x, extra.y, extra.radius, x, y, radius)) {
+                        const destroyed = this._damageExtraBall(extra, damage, fx, au, (extra.x + x) / 2, (extra.y + y) / 2);
+                        if (destroyed) {
+                            this._explodeExtraBall(extra, { withDamage: false });
+                            this.extraBalls.splice(i, 1);
+                        }
+                    }
+                }
+            }
+
+            checkPlayerCollision(player, effects, audio) {
+                if (!this.alive || !player || player.invulnerable || player.isDashing) return;
+                const fx = effects || (this.game ? this.game.effects : null);
+                const au = audio || (this.game ? this.game.audio : null);
+                const radius = player.radius || 20;
+                if (this._circleRectIntersect(player.x, player.y, radius, this.leftPaddle)) {
+                    const point = this._closestPointOnRect(player.x, player.y, this.leftPaddle);
+                    player.takeDamage(this.paddleDamage, point.x, point.y, fx, au);
+                    this.leftPaddle.damageFlash = 10;
+                    return;
+                }
+                if (this._circleRectIntersect(player.x, player.y, radius, this.rightPaddle)) {
+                    const point = this._closestPointOnRect(player.x, player.y, this.rightPaddle);
+                    player.takeDamage(this.paddleDamage, point.x, point.y, fx, au);
+                    this.rightPaddle.damageFlash = 10;
+                    return;
+                }
+                if (this._circleCircleIntersect(player.x, player.y, radius, this.ball.x, this.ball.y, this.ball.radius)) {
+                    const impactX = (player.x + this.ball.x) / 2;
+                    const impactY = (player.y + this.ball.y) / 2;
+                    player.takeDamage(this.ballContactDamage, impactX, impactY, fx, au);
+                    return;
+                }
+                for (let i = 0; i < this.extraBalls.length; i++) {
+                    const extra = this.extraBalls[i];
+                    if (this._circleCircleIntersect(player.x, player.y, radius, extra.x, extra.y, extra.radius)) {
+                        const impactX = (player.x + extra.x) / 2;
+                        const impactY = (player.y + extra.y) / 2;
+                        player.takeDamage(this.extraBallContactDamage, impactX, impactY, fx, au);
+                        return;
+                    }
+                }
+            }
+
+            _drawPaddle(ctx, paddle) {
+                if (!paddle) return;
+                ctx.save();
+                ctx.shadowColor = this.config.paddleGlowColor || 'rgba(255, 32, 32, 0.9)';
+                ctx.shadowBlur = 20;
+                ctx.fillStyle = paddle.damageFlash > 0 ? '#ffffff' : 'rgba(255, 70, 70, 0.95)';
+                ctx.fillRect(paddle.x - paddle.width / 2, paddle.y - paddle.height / 2, paddle.width, paddle.height);
+                ctx.shadowBlur = 0;
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'rgba(120, 0, 0, 0.9)';
+                ctx.strokeRect(paddle.x - paddle.width / 2, paddle.y - paddle.height / 2, paddle.width, paddle.height);
+                ctx.restore();
+            }
+
+            _drawExtraBall(ctx, extra) {
+                if (!extra) return;
+                ctx.save();
+                ctx.shadowColor = this.config.glowColor || 'rgba(255, 48, 48, 0.85)';
+                ctx.shadowBlur = 18;
+                ctx.fillStyle = extra.damageFlash > 0 ? '#ffffff' : '#ff5566';
+                ctx.beginPath();
+                ctx.arc(extra.x, extra.y, extra.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#aa0011';
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            _drawHealthBar(ctx) {
+                const width = 220;
+                const height = 12;
+                const offset = this.ball.radius + 60;
+                ctx.save();
+                ctx.fillStyle = 'rgba(60, 0, 0, 0.65)';
+                ctx.fillRect(this.ball.x - width / 2, this.ball.y - offset, width, height);
+                const pct = this.ball.maxHealth > 0 ? Math.max(0, Math.min(1, this.ball.health / this.ball.maxHealth)) : 0;
+                ctx.fillStyle = '#ff4242';
+                ctx.fillRect(this.ball.x - width / 2, this.ball.y - offset, width * pct, height);
+                if (this.ball.recentDamageFade > 0 && this.ball.maxHealth > 0) {
+                    const alpha = this.ball.recentDamageFade / 45;
+                    const recentPct = Math.min(1, (this.ball.recentDamage || 0) / this.ball.maxHealth);
+                    const overlayStart = this.ball.x - width / 2 + width * pct;
+                    const overlayWidth = width * recentPct;
+                    ctx.fillStyle = `rgba(255, 255, 255, ${0.85 * alpha})`;
+                    ctx.fillRect(overlayStart, this.ball.y - offset, overlayWidth, height);
+                }
+                ctx.restore();
+            }
+
+            draw(ctx) {
+                if (!ctx) return;
+                const now = Date.now();
+                const waveRatio = this.energyWaveInterval > 0 ? this._clamp((now - this.lastEnergyWaveTime) / this.energyWaveInterval, 0, 1) : 0;
+                const telegraphRadius = (this.config.energyWaveRadius || 150) * (0.45 + 0.35 * waveRatio);
+                ctx.save();
+                ctx.globalAlpha = 0.25 + 0.25 * Math.sin(waveRatio * Math.PI * 2);
+                ctx.strokeStyle = 'rgba(255, 80, 80, 0.9)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(this.ball.x, this.ball.y, telegraphRadius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+                this._drawPaddle(ctx, this.leftPaddle);
+                this._drawPaddle(ctx, this.rightPaddle);
+                ctx.save();
+                ctx.shadowColor = this.config.glowColor || 'rgba(255, 48, 48, 0.85)';
+                ctx.shadowBlur = 26;
+                ctx.fillStyle = this.ball.damageFlash > 0 ? '#ffffff' : (this.config.fillColor || '#ff3344');
+                ctx.beginPath();
+                ctx.arc(this.ball.x, this.ball.y, this.ball.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = this.config.strokeColor || '#aa0011';
+                ctx.stroke();
+                ctx.restore();
+                for (let i = 0; i < this.extraBalls.length; i++) {
+                    this._drawExtraBall(ctx, this.extraBalls[i]);
+                }
+                this._drawHealthBar(ctx);
+            }
+
+            update() {
+                if (!this.alive) return;
+                const timeScale = getTimeScale();
+                const motion = getMotionScale();
+                const now = Date.now();
+                this._updateBall(now, motion, timeScale);
+                this._updatePaddles(timeScale);
+                this._updateExtraBalls(motion, timeScale);
+                const scaledInterval = this.energyWaveInterval / Math.max(0.0001, timeScale);
+                if (now - this.lastEnergyWaveTime >= scaledInterval) {
+                    this._emitEnergyWave();
+                    this.lastEnergyWaveTime = now;
+                }
+                if (this.nextExtraBallTime && now >= this.nextExtraBallTime) {
+                    this._spawnExtraBall();
+                    this.nextExtraBallTime = null;
+                }
+                this.x = this.ball.x;
+                this.y = this.ball.y;
+                this.radius = this.ball.radius;
+            }
+
+            isDefeated() {
+                return !this.alive;
+            }
+
+            _onDefeated(effects, audio) {
+                if (!this.alive) return;
+                this.alive = false;
+                const fx = effects || (this.game ? this.game.effects : null);
+                const au = audio || (this.game ? this.game.audio : null);
+                if (fx && typeof fx.createExplosion === 'function') {
+                    fx.createExplosion(this.ball.x, this.ball.y, 'ping_and_pong_boss', this.ball.radius * 2.4);
+                }
+                if (fx && typeof fx.createEnemyRocketExplosionRing === 'function') {
+                    fx.createEnemyRocketExplosionRing(this.ball.x, this.ball.y, (this.config.energyWaveRadius || 150) * 1.1);
+                }
+                if (fx && typeof fx.createXPRing === 'function') {
+                    const xp = this.config.xp || 0;
+                    if (xp > 0) fx.createXPRing(this.ball.x, this.ball.y, this.ball.radius * 1.4, xp);
+                }
+                for (let i = this.extraBalls.length - 1; i >= 0; i--) {
+                    const extra = this.extraBalls[i];
+                    this._explodeExtraBall(extra, { withDamage: false, silent: true });
+                }
+                this.extraBalls.length = 0;
+                if (au) au.playSound('bossDefeated');
+                if (this.game) {
+                    const points = this.config.points || 0;
+                    this.game.score += points;
+                    if (this.game.uiManager && this.game.uiManager.showScoreAddition) {
+                        this.game.uiManager.showScoreAddition(points);
+                    }
+                    this.game.enemiesKilled = (this.game.enemiesKilled || 0) + 1;
+                }
+            }
+        }
+
         // UI Manager for handling UI visibility
         class UIManager {
             constructor() {
@@ -6362,6 +7207,13 @@
                     // Ensure tetromino manager reset at boss start
                     if (this.tetrisManager) this.tetrisManager.reset();
                       clearPendingBoss();
+                    if (this.uiManager && this.uiManager.hideBossWarning) this.uiManager.hideBossWarning();
+                    return;
+                }
+
+                if (chosen === 'ping_and_pong_boss') {
+                    this.activeBoss = new PingAndPongBoss(this);
+                    clearPendingBoss();
                     if (this.uiManager && this.uiManager.hideBossWarning) this.uiManager.hideBossWarning();
                     return;
                 }
@@ -7857,6 +8709,8 @@
                     this.tetrisManager.update();
                 } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
                     this.activeBoss.update();
+                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                    this.activeBoss.update();
                 } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
                     this.activeBoss.update();
                 }
@@ -7867,17 +8721,29 @@
                 if (this.input.mouse.down) this.shoot();
                 // Update rockets
                 {
+                    const pendingBossRocketExplosions = [];
                     let write = 0;
                     for (let read = 0; read < this.rockets.length; read++) {
                         const r = this.rockets[read];
-                        if (r && r.update(this.canvas, this.effects)) {
-                            this.rockets[write++] = r;
-                        } else if (r) {
+                        if (!r) continue;
+                        if (r.update(this.canvas, this.effects)) {
+                            let intercepted = false;
+                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                                const intercept = this.activeBoss.interceptPlayerRocket(r, this.effects, this.audio);
+                                if (intercept && intercept.consumed) {
+                                    pendingBossRocketExplosions.push(intercept);
+                                    intercepted = true;
+                                }
+                            }
+                            if (!intercepted) {
+                                this.rockets[write++] = r;
+                            }
+                        } else {
                             // On removal (out of bounds or life ended), explode
                             if (this.effects && this.effects.createRocketExplosionRing) {
                                 this.effects.createRocketExplosionRing(r.x, r.y, r.aoeRadius);
                                 this.audio.playSound('RocketExplotion');
-                        if (this.shakeCanvas) this.shakeCanvas(6, 250);
+                                if (this.shakeCanvas) this.shakeCanvas(6, 250);
                             }
                             // Apply AoE damage to enemies
                             const baseRadius = r.aoeRadius;
@@ -7900,77 +8766,118 @@
                                         this.handleEnemyKilled(enemy, { cause: 'rocket', impactX: r.x, impactY: r.y });
                                     }
                                 }
-                              }
-                                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
-                                    const boss = this.activeBoss;
-                                    const bossRadius = boss.radius || 0;
-                                    const dxBoss = boss.x - r.x;
-                                    const dyBoss = boss.y - r.y;
-                                    const rrBoss = (r.radius || 0) + bossRadius;
-                                    if (dxBoss * dxBoss + dyBoss * dyBoss <= rrBoss * rrBoss) {
-                                        const exploded = this.rockets.splice(ri, 1)[0];
-                                        const ex = exploded ? exploded.x : r.x;
-                                        const ey = exploded ? exploded.y : r.y;
-                                        const aoe = exploded ? exploded.aoeRadius : r.aoeRadius;
-                                        const damage = exploded ? exploded.damage : r.damage;
-                                        if (exploded && this.effects && this.effects.createRocketExplosionRing) {
-                                            this.effects.createRocketExplosionRing(ex, ey, aoe);
-                                            this.audio.playSound('RocketExplotion');
-                                            if (this.shakeCanvas) this.shakeCanvas(7, 260);
-                                        }
-                                        for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
-                                            const en = this.enemies[ej];
-                                            if (!en) continue;
-                                            const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
-                                            const combinedRadius = aoe + enemyRadius;
-                                            const ddx = en.x - ex;
-                                            const ddy = en.y - ey;
-                                            if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
-                                            if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
-                                                if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
-                                                if (!en.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
-                                                    damageType: 'rocket',
-                                                    impactX: ex,
-                                                    impactY: ey
-                                                })) {
-                                                    this.handleEnemyKilled(en, { cause: 'rocket', impactX: ex, impactY: ey });
-                                                }
+                            }
+                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                const boss = this.activeBoss;
+                                const bossRadius = boss.radius || 0;
+                                const dxBoss = boss.x - r.x;
+                                const dyBoss = boss.y - r.y;
+                                const rrBoss = (r.radius || 0) + bossRadius;
+                                if (dxBoss * dxBoss + dyBoss * dyBoss <= rrBoss * rrBoss) {
+                                    const exploded = this.rockets.splice(ri, 1)[0];
+                                    const ex = exploded ? exploded.x : r.x;
+                                    const ey = exploded ? exploded.y : r.y;
+                                    const aoe = exploded ? exploded.aoeRadius : r.aoeRadius;
+                                    const damage = exploded ? exploded.damage : r.damage;
+                                    if (exploded && this.effects && this.effects.createRocketExplosionRing) {
+                                        this.effects.createRocketExplosionRing(ex, ey, aoe);
+                                        this.audio.playSound('RocketExplotion');
+                                        if (this.shakeCanvas) this.shakeCanvas(7, 260);
+                                    }
+                                    for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
+                                        const en = this.enemies[ej];
+                                        if (!en) continue;
+                                        const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
+                                        const combinedRadius = aoe + enemyRadius;
+                                        const ddx = en.x - ex;
+                                        const ddy = en.y - ey;
+                                        if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
+                                        if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
+                                            if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
+                                            if (!en.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
+                                                damageType: 'rocket',
+                                                impactX: ex,
+                                                impactY: ey
+                                            })) {
+                                                this.handleEnemyKilled(en, { cause: 'rocket', impactX: ex, impactY: ey });
                                             }
                                         }
-                                        if (this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
-                                            this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
+                                    }
+                                    if (this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                                        this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
+                                    } else if (this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                        this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
+                                    }
+                                    continue;
+                                }
+                            }
+                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
+                                // Apply AoE to Tetris Cross boss pieces
+                                for (let p = this.tetrisManager.activePieces.length - 1; p >= 0; p--) {
+                                    const piece = this.tetrisManager.activePieces[p];
+                                    if (!piece || piece.dying) continue;
+                                    const cells = piece.getCells();
+                                    for (let c = 0; c < cells.length; c++) {
+                                        const cell = cells[c];
+                                        const dx = cell.x - r.x;
+                                        const dy = cell.y - r.y;
+                                        if (dx * dx + dy * dy <= (r.aoeRadius) * (r.aoeRadius)) {
+                                            piece.hp -= r.damage;
+                                            piece.damageFlash = 12;
+                                            if (piece.hp <= 0) {
+                                                piece.startDeath(this.effects);
+                                                break;
+                                            }
                                         }
-                                        continue;
                                     }
                                 }
-                                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
-                                  // Apply AoE to Tetris Cross boss pieces
-                                  for (let p = this.tetrisManager.activePieces.length - 1; p >= 0; p--) {
-                                      const piece = this.tetrisManager.activePieces[p];
-                                      if (!piece || piece.dying) continue;
-                                      const cells = piece.getCells();
-                                      for (let c = 0; c < cells.length; c++) {
-                                          const cell = cells[c];
-                                          const dx = cell.x - r.x;
-                                          const dy = cell.y - r.y;
-                                          if (dx*dx + dy*dy <= (r.aoeRadius) * (r.aoeRadius)) {
-                                              piece.hp -= r.damage;
-                                              piece.damageFlash = 12;
-                                              if (piece.hp <= 0) {
-                                                  piece.startDeath(this.effects);
-                                                  break;
-                                              }
-                                          }
-                                      }
-                                  }
-                                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
-                                    this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
-                                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
-                                  this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
-                              }
+                            } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                                this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
+                            } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
+                            } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
+                            }
                         }
                     }
                     this.rockets.length = write;
+                    if (pendingBossRocketExplosions.length > 0) {
+                        for (let i = 0; i < pendingBossRocketExplosions.length; i++) {
+                            const explosion = pendingBossRocketExplosions[i];
+                            const ex = explosion.x;
+                            const ey = explosion.y;
+                            const aoe = explosion.radius;
+                            const damage = explosion.damage;
+                            if (this.effects && this.effects.createRocketExplosionRing) {
+                                this.effects.createRocketExplosionRing(ex, ey, aoe);
+                                this.audio.playSound('RocketExplotion');
+                                if (this.shakeCanvas) this.shakeCanvas(6, 250);
+                            }
+                            const baseRadius = aoe;
+                            for (let ei = this.enemies.length - 1; ei >= 0; ei--) {
+                                const enemy = this.enemies[ei];
+                                if (!enemy) continue;
+                                const enemyRadius = typeof enemy.radius === 'number' ? enemy.radius : 0;
+                                const combinedRadius = baseRadius + enemyRadius;
+                                const dx = enemy.x - ex;
+                                const dy = enemy.y - ey;
+                                if (Math.abs(dx) > combinedRadius || Math.abs(dy) > combinedRadius) continue;
+                                if (dx * dx + dy * dy <= combinedRadius * combinedRadius) {
+                                    if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
+                                    if (!enemy.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
+                                        damageType: 'rocket',
+                                        impactX: ex,
+                                        impactY: ey
+                                    })) {
+                                        this.handleEnemyKilled(enemy, { cause: 'rocket', impactX: ex, impactY: ey });
+                                    }
+                                }
+                            }
+                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss && explosion.applyDamageToBoss) {
+                                this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
+                            }
+                        }
+                    }
                 }
                   // Update enemy rockets
                   {
@@ -7996,12 +8903,24 @@
                   }
                 // Update mines
                 {
+                    const pendingBossMineExplosions = [];
                     let write = 0;
                     for (let read = 0; read < this.mines.length; read++) {
                         const m = this.mines[read];
-                        if (m && m.update(this.canvas, this.effects)) {
-                            this.mines[write++] = m;
-                        } else if (m) {
+                        if (!m) continue;
+                        if (m.update(this.canvas, this.effects)) {
+                            let intercepted = false;
+                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                                const intercept = this.activeBoss.interceptPlayerMine(m, this.effects, this.audio);
+                                if (intercept && intercept.consumed) {
+                                    pendingBossMineExplosions.push(intercept);
+                                    intercepted = true;
+                                }
+                            }
+                            if (!intercepted) {
+                                this.mines[write++] = m;
+                            }
+                        } else {
                             // On life end, explode
                             if (this.effects && this.effects.createRocketExplosionRing) {
                                 this.effects.createRocketExplosionRing(m.x, m.y, m.aoeRadius);
@@ -8030,55 +8949,94 @@
                                     }
                                 }
                             }
-                                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
-                                    const boss = this.activeBoss;
-                                    const bossRadius = boss.radius || 0;
-                                    const dxBoss = boss.x - m.x;
-                                    const dyBoss = boss.y - m.y;
-                                    const rrBoss = (m.radius || 0) + bossRadius;
-                                    if (dxBoss * dxBoss + dyBoss * dyBoss <= rrBoss * rrBoss) {
-                                        const exploded = this.mines.splice(mi, 1)[0];
-                                        const ex = exploded ? exploded.x : m.x;
-                                        const ey = exploded ? exploded.y : m.y;
-                                        const aoe = exploded ? exploded.aoeRadius : m.aoeRadius;
-                                        const damage = exploded ? exploded.damage : m.damage;
-                                        if (exploded && this.effects && this.effects.createRocketExplosionRing) {
-                                            this.effects.createRocketExplosionRing(ex, ey, aoe);
-                                            this.audio.playSound('RocketExplotion');
-                                            if (this.shakeCanvas) this.shakeCanvas(7, 240);
-                                        }
-                                        for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
-                                            const en = this.enemies[ej];
-                                            if (!en) continue;
-                                            const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
-                                            const combinedRadius = aoe + enemyRadius;
-                                            const ddx = en.x - ex;
-                                            const ddy = en.y - ey;
-                                            if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
-                                            if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
-                                                if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
-                                                if (!en.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
-                                                    damageType: 'mine',
-                                                    impactX: ex,
-                                                    impactY: ey
-                                                })) {
-                                                    this.handleEnemyKilled(en, { cause: 'mine', impactX: ex, impactY: ey });
-                                                }
+                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                const boss = this.activeBoss;
+                                const bossRadius = boss.radius || 0;
+                                const dxBoss = boss.x - m.x;
+                                const dyBoss = boss.y - m.y;
+                                const rrBoss = (m.radius || 0) + bossRadius;
+                                if (dxBoss * dxBoss + dyBoss * dyBoss <= rrBoss * rrBoss) {
+                                    const exploded = this.mines.splice(mi, 1)[0];
+                                    const ex = exploded ? exploded.x : m.x;
+                                    const ey = exploded ? exploded.y : m.y;
+                                    const aoe = exploded ? exploded.aoeRadius : m.aoeRadius;
+                                    const damage = exploded ? exploded.damage : m.damage;
+                                    if (exploded && this.effects && this.effects.createRocketExplosionRing) {
+                                        this.effects.createRocketExplosionRing(ex, ey, aoe);
+                                        this.audio.playSound('RocketExplotion');
+                                        if (this.shakeCanvas) this.shakeCanvas(7, 240);
+                                    }
+                                    for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
+                                        const en = this.enemies[ej];
+                                        if (!en) continue;
+                                        const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
+                                        const combinedRadius = aoe + enemyRadius;
+                                        const ddx = en.x - ex;
+                                        const ddy = en.y - ey;
+                                        if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
+                                        if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
+                                            if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
+                                            if (!en.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
+                                                damageType: 'mine',
+                                                impactX: ex,
+                                                impactY: ey
+                                            })) {
+                                                this.handleEnemyKilled(en, { cause: 'mine', impactX: ex, impactY: ey });
                                             }
                                         }
-                                        if (this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
-                                            this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
-                                        }
-                                          continue;
-                                    } else {
-                                        this.activeBoss.handleAoeDamage(m.x, m.y, m.aoeRadius, m.damage, this.effects, this.audio);
                                     }
-                                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                    if (this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                                        this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
+                                    } else if (this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                        this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
+                                    }
+                                    continue;
+                                } else {
                                     this.activeBoss.handleAoeDamage(m.x, m.y, m.aoeRadius, m.damage, this.effects, this.audio);
                                 }
+                            } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                this.activeBoss.handleAoeDamage(m.x, m.y, m.aoeRadius, m.damage, this.effects, this.audio);
+                            }
                         }
                     }
                     this.mines.length = write;
+                    if (pendingBossMineExplosions.length > 0) {
+                        for (let i = 0; i < pendingBossMineExplosions.length; i++) {
+                            const explosion = pendingBossMineExplosions[i];
+                            const ex = explosion.x;
+                            const ey = explosion.y;
+                            const aoe = explosion.radius;
+                            const damage = explosion.damage;
+                            if (this.effects && this.effects.createRocketExplosionRing) {
+                                this.effects.createRocketExplosionRing(ex, ey, aoe);
+                                this.audio.playSound('RocketExplotion');
+                                if (this.shakeCanvas) this.shakeCanvas(6, 240);
+                            }
+                            const baseRadius = aoe;
+                            for (let ei = this.enemies.length - 1; ei >= 0; ei--) {
+                                const enemy = this.enemies[ei];
+                                if (!enemy) continue;
+                                const enemyRadius = typeof enemy.radius === 'number' ? enemy.radius : 0;
+                                const combinedRadius = baseRadius + enemyRadius;
+                                const dx = enemy.x - ex;
+                                const dy = enemy.y - ey;
+                                if (Math.abs(dx) > combinedRadius || Math.abs(dy) > combinedRadius) continue;
+                                if (dx * dx + dy * dy <= combinedRadius * combinedRadius) {
+                                    if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
+                                    if (!enemy.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
+                                        damageType: 'mine',
+                                        impactX: ex,
+                                        impactY: ey
+                                    })) {
+                                        this.handleEnemyKilled(enemy, { cause: 'mine', impactX: ex, impactY: ey });
+                                    }
+                                }
+                            }
+                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss && explosion.applyDamageToBoss) {
+                                this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
+                            }
+                        }
+                    }
                 }
                   // Update enemy mines
                   {
@@ -8197,7 +9155,9 @@
                                         }
                                     }
                                 }
-                              } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                                    this.activeBoss.handleAoeDamage(ex, ey, exploded.aoeRadius, exploded.damage, this.effects, this.audio);
+                                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
                                   this.activeBoss.handleAoeDamage(ex, ey, exploded.aoeRadius, exploded.damage, this.effects, this.audio);
                             }
                             continue outerRocket;
@@ -8249,7 +9209,9 @@
                                         }
                                       }
                                   }
-                                  if (this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                    if (this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                                        this.activeBoss.handleAoeDamage(ex, ey, aoe, exploded.damage, this.effects, this.audio);
+                                    } else if (this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
                                       this.activeBoss.handleAoeDamage(ex, ey, aoe, exploded.damage, this.effects, this.audio);
                                   }
                                   continue outerRocket;
@@ -8305,7 +9267,9 @@
                                       }
                                 }
                             }
-                              if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                                    this.activeBoss.handleAoeDamage(ex, ey, exploded.aoeRadius, exploded.damage, this.effects, this.audio);
+                                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
                                   this.activeBoss.handleAoeDamage(ex, ey, exploded.aoeRadius, exploded.damage, this.effects, this.audio);
                               }
                             continue outerMine;
@@ -8357,7 +9321,9 @@
                                         }
                                       }
                                   }
-                                  if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
+                                    if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                                        this.activeBoss.handleAoeDamage(ex, ey, aoe, exploded.damage, this.effects, this.audio);
+                                    } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
                                       this.activeBoss.handleAoeDamage(ex, ey, aoe, exploded.damage, this.effects, this.audio);
                                   }
                                   continue outerMine;
@@ -8460,6 +9426,21 @@
                                 }
                             }
                         }
+                    }
+                }
+
+                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                    for (let j = this.bullets.length - 1; j >= 0; j--) {
+                        const b = this.bullets[j];
+                        if (!b || b._dead) continue;
+                        if (this.activeBoss.handlePlayerBullet(b, this.effects, this.audio)) {
+                            b._dead = true;
+                        }
+                    }
+                    for (let j = this.effects.effects.length - 1; j >= 0; j--) {
+                        const effect = this.effects.effects[j];
+                        if (effect.type !== 'railgunBeam') continue;
+                        this.activeBoss.handleRailgunBeam(effect, this.effects, this.audio);
                     }
                 }
 
@@ -8594,6 +9575,10 @@
                     }
                 }
 
+                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
+                    this.activeBoss.checkPlayerCollision(this.player, this.effects, this.audio);
+                }
+
                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
                     this.activeBoss.checkPlayerCollision(this.player, this.effects, this.audio);
                 }
@@ -8653,6 +9638,8 @@
                 
                 // If custom boss died outside of loop, close phase
                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss && !this.activeBoss.active) {
+                    this.onBossDefeated();
+                } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss && this.activeBoss.isDefeated()) {
                     this.onBossDefeated();
                 } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss && this.activeBoss.isDefeated()) {
                     this.onBossDefeated();
