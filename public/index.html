@@ -1633,8 +1633,8 @@
             }
 
             update(canvas, effects) {
-                // White trail (3x life)
-                if (effects && effects.createRocketTrail) effects.createRocketTrail(this.x, this.y, '#FFFFFF');
+                // Cyan trail (3x life)
+                if (effects && effects.createRocketTrail) effects.createRocketTrail(this.x, this.y, '#00ffff');
                 const motion = getMotionScale();
                 const t = getTimeScale();
                 this.speed += this.acceleration * t;
@@ -1655,7 +1655,7 @@
                 ctx.globalAlpha = blink;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = '#00ffff';
+                ctx.fillStyle = '#ffffff';
                 ctx.fill();
                 ctx.strokeStyle = '#00cccc';
                 ctx.lineWidth = 2;
