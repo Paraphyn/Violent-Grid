@@ -39,7 +39,13 @@
             boss_hit: { file: 'boss-hit.wav', loop: false },
             SnakeEatsApple: { file: 'snake-eats-apple.wav', loop: false },
             bossDefeated: { file: 'boss-killed.wav', loop: false },
-            gameOver: { file: 'game-over.wav', loop: false }
+            gameOver: { file: 'game-over.wav', loop: false },
+            wavePerfectP1: { file: 'p1-that-was-great.wav', loop: false },
+            wavePerfectP2: { file: 'p2-well-done-player.wav', loop: false },
+            waveDamageN1: { file: 'n1-keep-trying.wav', loop: false },
+            waveDamageN2: { file: 'n2-not-conving-yet.wav', loop: false },
+            waveDamageN3: { file: 'n3-try-harder.wav', loop: false },
+            waveDamageN4: { file: 'n4-you-can-do-better.wav', loop: false }
         },
         settings: {
             defaultVolume: 0.7,
@@ -48,7 +54,13 @@
             maxVoices: {
                 default: 8,
                 bulletShoot: 4,
-                enemyHit: 4
+                enemyHit: 4,
+                wavePerfectP1: 1,
+                wavePerfectP2: 1,
+                waveDamageN1: 1,
+                waveDamageN2: 1,
+                waveDamageN3: 1,
+                waveDamageN4: 1
             }
         }
     };
