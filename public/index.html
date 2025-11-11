@@ -5311,8 +5311,14 @@
                 this.mode = 'orbit';
                 this.modeExpiresAt = Date.now() + this._randomModeDuration();
                 this.orbitAngle = Math.random() * Math.PI * 2;
-                this.orbitRadius = 220;
                 this.velocity = { x: 0, y: 0 };
+                this.preferredDistance = this.config.preferredDistance || 380;
+                this.preferredDistanceVariance = this.config.preferredDistanceVariance || 80;
+                this.minDistanceFromPlayer = this.config.minDistanceFromPlayer || 320;
+                this.maxDistanceFromPlayer = this.config.maxDistanceFromPlayer || 500;
+                this.bulletSpeed = this.config.bulletSpeed || 9.4;
+                this.bulletIntervalMs = this.config.bulletIntervalMs || 180;
+                this.bulletSprayRadians = this.config.bulletSprayRadians || Math.PI / 16;
                 this.damageFlash = 0;
                 this.recentDamage = 0;
                 this.recentDamageFade = 0;
@@ -5336,16 +5342,25 @@
                 };
                 this._beamHitSet = new WeakSet();
                 const now = Date.now();
+                this.orbitRadius = this._randomPreferredRadius();
                 this.nextDashTime = now + 2600 + Math.random() * 1800;
-                this.nextBulletTime = now + 1000;
+                this.nextBulletTime = now + this.bulletIntervalMs * 3;
                 this.nextRocketTime = now + 2800;
                 this.nextMineTime = now + 4200;
+                this._lastBulletSoundTime = 0;
                 this._lastPlayerX = game.player ? game.player.x : this.x;
                 this._lastPlayerY = game.player ? game.player.y : this.y;
             }
 
             _randomModeDuration() {
                 return 3500 + Math.random() * 2200;
+            }
+
+            _randomPreferredRadius() {
+                const variance = this.preferredDistanceVariance || 0;
+                const randomOffset = (Math.random() - 0.5) * 2 * variance;
+                const radius = this.preferredDistance + randomOffset;
+                return Math.max(this.minDistanceFromPlayer, Math.min(this.maxDistanceFromPlayer, radius));
             }
 
             _chooseNextMode(now) {
@@ -5357,22 +5372,50 @@
                 this.mode = candidate;
                 this.modeExpiresAt = now + this._randomModeDuration();
                 if (this.mode === 'orbit') {
-                    this.orbitRadius = 180 + Math.random() * 80;
+                    this.orbitRadius = this._randomPreferredRadius();
                 } else if (this.mode === 'flee') {
                     this.velocity.x *= 0.5;
                     this.velocity.y *= 0.5;
                 }
             }
 
-            _clampToBounds() {
+            _getBounds() {
                 const canvas = this.game.canvas;
                 const safeMinY = this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : 120;
                 const minY = Math.max(this.radius, safeMinY + this.radius * 0.25);
-                const maxY = canvas.height - this.radius;
-                const minX = this.radius;
-                const maxX = canvas.width - this.radius;
-                this.x = Math.max(minX, Math.min(maxX, this.x));
-                this.y = Math.max(minY, Math.min(maxY, this.y));
+                return {
+                    minX: this.radius,
+                    maxX: canvas.width - this.radius,
+                    minY,
+                    maxY: canvas.height - this.radius
+                };
+            }
+
+            _clampToBounds() {
+                const bounds = this._getBounds();
+                this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x));
+                this.y = Math.max(bounds.minY, Math.min(bounds.maxY, this.y));
+            }
+
+            _enforceDistanceFromPlayer(player) {
+                if (!player) return;
+                const dx = this.x - player.x;
+                const dy = this.y - player.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (!distance) return;
+                let targetDistance = distance;
+                if (distance < this.minDistanceFromPlayer) {
+                    targetDistance = this.minDistanceFromPlayer;
+                } else if (distance > this.maxDistanceFromPlayer) {
+                    targetDistance = this.maxDistanceFromPlayer;
+                }
+                if (targetDistance === distance) return;
+                const scale = targetDistance / distance;
+                const bounds = this._getBounds();
+                const targetX = player.x + dx * scale;
+                const targetY = player.y + dy * scale;
+                this.x = Math.max(bounds.minX, Math.min(bounds.maxX, targetX));
+                this.y = Math.max(bounds.minY, Math.min(bounds.maxY, targetY));
             }
 
             _startDash(now, player) {
@@ -5408,14 +5451,20 @@
             _updateOrbit(player, timeScale) {
                 if (!player) return;
                 this.orbitAngle = (this.orbitAngle + 0.02 * timeScale) % (Math.PI * 2);
-                const radius = this.orbitRadius + Math.sin(this.orbitAngle * 2.3) * 24;
+                let radius = this.orbitRadius + Math.sin(this.orbitAngle * 2.3) * 24;
+                radius = Math.max(this.minDistanceFromPlayer, Math.min(this.maxDistanceFromPlayer, radius));
                 const targetX = player.x + Math.cos(this.orbitAngle) * radius;
                 const targetY = player.y + Math.sin(this.orbitAngle) * radius;
+                const bounds = this._getBounds();
+                const clampedTargetX = Math.max(bounds.minX, Math.min(bounds.maxX, targetX));
+                const clampedTargetY = Math.max(bounds.minY, Math.min(bounds.maxY, targetY));
                 const lerp = Math.min(1, 0.15 * timeScale);
-                this.x += (targetX - this.x) * lerp;
-                this.y += (targetY - this.y) * lerp;
-                this.velocity.x = targetX - this.x;
-                this.velocity.y = targetY - this.y;
+                const startX = this.x;
+                const startY = this.y;
+                this.x += (clampedTargetX - this.x) * lerp;
+                this.y += (clampedTargetY - this.y) * lerp;
+                this.velocity.x = this.x - startX;
+                this.velocity.y = this.y - startY;
             }
 
             _updateMirror(player) {
@@ -5423,17 +5472,29 @@
                 const playerDx = player.x - this._lastPlayerX;
                 const playerDy = player.y - this._lastPlayerY;
                 const factor = 1.05;
-                this.x -= playerDx * factor;
-                this.y -= playerDy * factor;
-                const offsetX = this.x - player.x;
-                const offsetY = this.y - player.y;
+                const startX = this.x;
+                const startY = this.y;
+                const mirroredX = this.x - playerDx * factor;
+                const mirroredY = this.y - playerDy * factor;
+                const offsetX = mirroredX - player.x;
+                const offsetY = mirroredY - player.y;
                 const dist = Math.sqrt(offsetX * offsetX + offsetY * offsetY) || 1;
-                const targetDistance = 190;
-                const adjust = (targetDistance - dist) * 0.1;
-                this.x += (offsetX / dist) * adjust;
-                this.y += (offsetY / dist) * adjust;
-                this.velocity.x = -playerDx;
-                this.velocity.y = -playerDy;
+                let targetDistance = this.preferredDistance;
+                if (dist < this.minDistanceFromPlayer) {
+                    targetDistance = this.minDistanceFromPlayer;
+                } else if (dist > this.maxDistanceFromPlayer) {
+                    targetDistance = this.maxDistanceFromPlayer;
+                }
+                const adjust = (targetDistance - dist) * 0.12;
+                const bounds = this._getBounds();
+                let newX = mirroredX + (offsetX / dist) * adjust;
+                let newY = mirroredY + (offsetY / dist) * adjust;
+                newX = Math.max(bounds.minX, Math.min(bounds.maxX, newX));
+                newY = Math.max(bounds.minY, Math.min(bounds.maxY, newY));
+                this.velocity.x = newX - startX;
+                this.velocity.y = newY - startY;
+                this.x = newX;
+                this.y = newY;
             }
 
             _updateFlee(player, timeScale, motion) {
@@ -5441,9 +5502,19 @@
                 const dx = this.x - player.x;
                 const dy = this.y - player.y;
                 const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                const accel = 0.25 * timeScale;
-                this.velocity.x += (dx / len) * accel;
-                this.velocity.y += (dy / len) * accel;
+                const awayX = dx / len;
+                const awayY = dy / len;
+                let accel = 0.25 * timeScale;
+                if (len < this.minDistanceFromPlayer) {
+                    accel *= 1.6;
+                }
+                this.velocity.x += awayX * accel;
+                this.velocity.y += awayY * accel;
+                if (len > this.maxDistanceFromPlayer) {
+                    const braking = 0.18 * timeScale;
+                    this.velocity.x -= awayX * braking;
+                    this.velocity.y -= awayY * braking;
+                }
                 const maxSpeed = (this.speed || 5) * 1.4;
                 const velLen = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
                 if (velLen > maxSpeed) {
@@ -5451,17 +5522,26 @@
                     this.velocity.x *= s;
                     this.velocity.y *= s;
                 }
-                this.x += this.velocity.x * motion;
-                this.y += this.velocity.y * motion;
-                const safeMinY = this.game.getBossSafeMinCenterY ? this.game.getBossSafeMinCenterY() : 120;
-                const minY = Math.max(this.radius, safeMinY + this.radius * 0.25);
-                const canvas = this.game.canvas;
-                if (this.x <= this.radius || this.x >= canvas.width - this.radius) {
-                    this.velocity.x *= -0.6;
+                const bounds = this._getBounds();
+                let nextX = this.x + this.velocity.x * motion;
+                let nextY = this.y + this.velocity.y * motion;
+                const buffer = Math.max(12, this.radius * 0.4);
+                if (nextX < bounds.minX + buffer) {
+                    nextX = Math.max(bounds.minX, nextX);
+                    this.velocity.x = Math.max(0, this.velocity.x * 0.4);
+                } else if (nextX > bounds.maxX - buffer) {
+                    nextX = Math.min(bounds.maxX, nextX);
+                    this.velocity.x = Math.min(0, this.velocity.x * 0.4);
                 }
-                if (this.y <= minY || this.y >= canvas.height - this.radius) {
-                    this.velocity.y *= -0.6;
+                if (nextY < bounds.minY + buffer) {
+                    nextY = Math.max(bounds.minY, nextY);
+                    this.velocity.y = Math.max(0, this.velocity.y * 0.4);
+                } else if (nextY > bounds.maxY - buffer) {
+                    nextY = Math.min(bounds.maxY, nextY);
+                    this.velocity.y = Math.min(0, this.velocity.y * 0.4);
                 }
+                this.x = Math.max(bounds.minX, Math.min(bounds.maxX, nextX));
+                this.y = Math.max(bounds.minY, Math.min(bounds.maxY, nextY));
                 const friction = Math.pow(0.92, timeScale);
                 this.velocity.x *= friction;
                 this.velocity.y *= friction;
@@ -5469,15 +5549,17 @@
 
             _maybeFireBullet(now, player) {
                 if (!player || now < this.nextBulletTime || !Array.isArray(this.game.enemyBullets)) return;
-                const dx = player.x - this.x;
-                const dy = player.y - this.y;
-                const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                const speed = 8.5;
+                const baseAngle = Math.atan2(player.y - this.y, player.x - this.x);
+                const spray = (Math.random() - 0.5) * this.bulletSprayRadians;
+                const angle = baseAngle + spray;
+                const speed = this.bulletSpeed;
+                const vx = Math.cos(angle) * speed;
+                const vy = Math.sin(angle) * speed;
                 this.game.enemyBullets.push(new EnemyBullet(
                     this.x,
                     this.y,
-                    (dx / len) * speed,
-                    (dy / len) * speed,
+                    vx,
+                    vy,
                     this.bulletDamage,
                     {
                         fillColor: '#ff4a4a',
@@ -5486,8 +5568,13 @@
                         trailColor: '#ff5f5f'
                     }
                 ));
-                if (this.game.audio) this.game.audio.playSound('enemyShoot');
-                this.nextBulletTime = now + 2000;
+                if (this.game.audio) {
+                    if (!this._lastBulletSoundTime || now - this._lastBulletSoundTime > 360) {
+                        this.game.audio.playSound('enemyShoot');
+                        this._lastBulletSoundTime = now;
+                    }
+                }
+                this.nextBulletTime = now + this.bulletIntervalMs;
             }
 
             _maybeFireRocket(now, player) {
@@ -5549,6 +5636,10 @@
                     }
                 }
                 this._clampToBounds();
+                if (!this.dashState.active && player) {
+                    this._enforceDistanceFromPlayer(player);
+                    this._clampToBounds();
+                }
                 if (player) {
                     this._maybeFireBullet(now, player);
                     this._maybeFireRocket(now, player);
