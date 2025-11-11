@@ -254,9 +254,8 @@ const WAVE_GROUPS = [
     // Group 2 (example: original waves 4-6)
     [
         { enemies: { cubes: 10, rhombuses: 3 }, spawnTime: 10000, simultaneousSpawns: 1 },
-        {
-            enemies: { triangles: 12 }, spawnTime: 15000, simultaneousSpawns: 1, 
-            eliteSpawns: [
+        { enemies: { triangles: 12 }, spawnTime: 15000, simultaneousSpawns: 1, eliteSpawns: 
+            [
                 { type: 'killer_triangle', count: 3, initialDelayMs: 3000, repeatDelayMs: 4000 }
             ]
         },
@@ -265,19 +264,13 @@ const WAVE_GROUPS = [
     // Group 3 (example: original waves 7-9)
     [
         { enemies: { cubes: 5, dashSquares: 5, triangles: 0, octagons: 5, rhombuses: 5 }, spawnTime: 15000, simultaneousSpawns: 1 },
-        {
-            enemies: { cubes: 0, triangles: 12, octagons: 0, rhombuses: 5 },
-            spawnTime: 25000,
-            simultaneousSpawns: 1,
-            eliteSpawns: [
+        { enemies: { cubes: 0, triangles: 12, octagons: 0, rhombuses: 5 }, spawnTime: 25000, simultaneousSpawns: 1, eliteSpawns: 
+            [
                 { type: 'killer_triangle', count: 3, initialDelayMs: 4000, repeatDelayMs: 6000 }
             ]
         },
-        {
-            enemies: { cubes: 0, triangles: 0, octagons: 20, rhombuses: 0 },
-            spawnTime: 25000,
-            simultaneousSpawns: 1,
-            eliteSpawns: [
+        { enemies: { cubes: 0, triangles: 0, octagons: 20, rhombuses: 0 }, spawnTime: 25000, simultaneousSpawns: 1, eliteSpawns: 
+            [
                 { type: 'super_octagon', count: 1, initialDelayMs: 10000 }
             ]
         }
@@ -285,20 +278,14 @@ const WAVE_GROUPS = [
     // Group 4 (example: original waves 10-12)
     [
         { enemies: { cubes: 25, dashSquares: 0, triangles: 25, killerTriangles: 0, octagons: 0, rhombuses: 0 }, spawnTime: 25000, simultaneousSpawns: 2 },
-        {
-            enemies: { cubes: 0, dashSquares: 20 },
-            spawnTime: 20000,
-            simultaneousSpawns: 2,
-            eliteSpawns: [
+        { enemies: { cubes: 0, dashSquares: 20 }, spawnTime: 20000, simultaneousSpawns: 2, eliteSpawns: 
+            [
                 { type: 'killer_triangle', count: 8, initialDelayMs: 3000, repeatDelayMs: 2000 },
                 { type: 'super_octagon', count: 1, initialDelayMs: 9000 }
             ]
         },
-        {
-            enemies: { cubes: 30, triangles: 0, octagons: 0, rhombuses: 0 },
-            spawnTime: 20000,
-            simultaneousSpawns: 2,
-            eliteSpawns: [
+        { enemies: { cubes: 30, triangles: 0, octagons: 0, rhombuses: 0 }, spawnTime: 20000, simultaneousSpawns: 2, eliteSpawns: 
+            [
                 { type: 'super_octagon', count: 3, initialDelayMs: 4000, repeatDelayMs: 6000 }
             ]
         }
@@ -306,20 +293,14 @@ const WAVE_GROUPS = [
     // Group 5 (example: original waves 13-15)
     [
         { enemies: { cubes: 30, dashSquares: 30, triangles: 0, killerTriangles: 0, octagons: 0, rhombuses: 0 }, spawnTime: 25000, simultaneousSpawns: 3 },
-        {
-            enemies: { cubes: 0, dashSquares: 0, triangles: 15, octagons: 0, rhombuses: 0 },
-            spawnTime: 20000,
-            simultaneousSpawns: 3,
-            eliteSpawns: [
+        { enemies: { cubes: 0, dashSquares: 0, triangles: 15, octagons: 0, rhombuses: 0 }, spawnTime: 20000, simultaneousSpawns: 3, eliteSpawns: 
+            [
                 { type: 'killer_triangle', count: 8, initialDelayMs: 3000, repeatDelayMs: 2000 },
                 { type: 'super_octagon', count: 1, initialDelayMs: 9000 }
             ]
         },
-        {
-            enemies: { cubes: 0, dashSquares: 0, triangles: 0, octagons: 15, rhombuses: 0 },
-            spawnTime: 20000,
-            simultaneousSpawns: 3,
-            eliteSpawns: [
+        { enemies: { cubes: 0, dashSquares: 0, triangles: 0, octagons: 15, rhombuses: 0 }, spawnTime: 20000, simultaneousSpawns: 3, eliteSpawns: 
+            [
                 { type: 'super_octagon', count: 3, initialDelayMs: 4000, repeatDelayMs: 6000 }
             ]
         }
