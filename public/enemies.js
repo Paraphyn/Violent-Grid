@@ -181,9 +181,9 @@ ENEMY_TYPES['player_2_boss'] = {
 
 ENEMY_TYPES['ping_and_pong_boss'] = {
     role: 'boss',
-    health: 5000,
+    health: 4000,
     speed: 0,
-    size: 80,
+    size: 100,
     points: 950,
     damage: 0,
     xp: 150,
@@ -193,8 +193,8 @@ ENEMY_TYPES['ping_and_pong_boss'] = {
     isBoss: true,
     bossBaseType: 'ping_and_pong',
     displayName: 'PING & PONG',
-    paddleWidth: 20,
-    paddleHeight: 80,
+    paddleWidth: 30,
+    paddleHeight: 120,
     paddleGlowColor: 'rgba(255, 32, 32, 0.9)',
     paddleFollowLerp: 0.18,
     paddleDamage: 300,
