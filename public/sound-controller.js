@@ -21,6 +21,7 @@
             bossSpawnRhomboss: { file: 'rhomboss-spawn.wav', loop: false },
             bossSpawnPlayerTwo: { file: 'player2-spawn.wav', loop: false },
             bossSpawnPingAndPong: { file: 'pingandpong-spawn.wav', loop: false },
+            PongBossBallBounce: { file: 'pongboss-ball-bounce.wav', loop: false },
             bossSpawnTetris: { file: 'tetris-spawn.wav', loop: false },
             bossSpawnVectorSnake: { file: 'vector-snake-spawn.wav', loop: false },
             killerTriangleDie: { file: 'killer-triangle-die.wav', loop: false },
@@ -52,7 +53,8 @@
             maxVoices: {
                 default: 8,
                 bulletShoot: 4,
-                enemyHit: 4
+                enemyHit: 4,
+                PongBossBallBounce: 3
             }
         }
     };
