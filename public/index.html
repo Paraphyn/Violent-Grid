@@ -5943,16 +5943,32 @@
                 const startY = Math.max(safeMinY + radius, canvas.height * 0.35);
                 const ballHealth = this.config.ballHealth || this.config.health || 5000;
                 const baseSpeed = this.config.ballBaseSpeed || 6;
-                const directionX = Math.random() < 0.5 ? -1 : 1;
-                const directionY = Math.random() < 0.5 ? -1 : 1;
+                this.ballMinHorizontalRatio = this.config.ballMinHorizontalRatio != null
+                    ? Math.min(0.98, Math.max(0.5, this.config.ballMinHorizontalRatio))
+                    : 0.78;
+                const derivedMaxVertical = Math.sqrt(Math.max(0.0001, 1 - this.ballMinHorizontalRatio * this.ballMinHorizontalRatio));
+                if (this.config.ballMaxVerticalRatio != null) {
+                    const candidate = Math.max(0.05, this.config.ballMaxVerticalRatio);
+                    this.ballMaxVerticalRatio = Math.min(derivedMaxVertical, Math.min(0.99, candidate));
+                } else {
+                    this.ballMaxVerticalRatio = derivedMaxVertical;
+                }
+                this.ballInitialAngleMax = this.config.ballInitialMaxAngle != null
+                    ? Math.min(Math.PI / 2 - 0.01, Math.max(0.01, this.config.ballInitialMaxAngle))
+                    : Math.PI / 7;
+                const horizontalDirection = Math.random() < 0.5 ? -1 : 1;
+                const angleRange = this.ballInitialAngleMax;
+                const initialAngle = (Math.random() * 2 - 1) * angleRange;
+                const initialVx = Math.cos(initialAngle) * baseSpeed * horizontalDirection;
+                const initialVy = Math.sin(initialAngle) * baseSpeed;
                 this.ball = {
                     x: canvas.width / 2,
                     y: startY,
                     radius,
                     speed: baseSpeed,
                     maxSpeed: this.config.ballMaxSpeed || Math.max(baseSpeed, 14),
-                    vx: directionX * baseSpeed * 0.7071,
-                    vy: directionY * baseSpeed * 0.7071,
+                    vx: initialVx,
+                    vy: initialVy,
                     health: ballHealth,
                     maxHealth: ballHealth,
                     damageFlash: 0,
@@ -5960,8 +5976,11 @@
                     recentDamageFade: 0
                 };
                 const norm = Math.hypot(this.ball.vx, this.ball.vy) || 1;
-                this.ball.vx = (this.ball.vx / norm) * baseSpeed;
-                this.ball.vy = (this.ball.vy / norm) * baseSpeed;
+                if (norm > 0) {
+                    this.ball.vx = (this.ball.vx / norm) * baseSpeed;
+                    this.ball.vy = (this.ball.vy / norm) * baseSpeed;
+                }
+                this._enforceBallAngle(this.ball);
                 const paddleWidth = this.config.paddleWidth || 20;
                 const paddleHeight = this.config.paddleHeight || 80;
                 const inset = Math.max(24, this.config.barrierInset || 56);
@@ -5997,6 +6016,26 @@
                 this.x = this.ball.x;
                 this.y = this.ball.y;
                 this.radius = this.ball.radius;
+                this.extraBallSpawnDelayMs = Math.max(1000, this.config.extraBallSpawnDelayMs || 10000);
+                this.paddleDesyncMs = this.config.paddleDesyncMs != null ? Math.max(0, this.config.paddleDesyncMs) : 320;
+                this.ballHistory = [];
+                this.paddleNoisePhaseLeft = Math.random() * Math.PI * 2;
+                this.paddleNoisePhaseRight = Math.random() * Math.PI * 2;
+                this.paddleNoiseAmplitude = this.config.paddleNoiseAmplitude != null ? this.config.paddleNoiseAmplitude : 12;
+                this.paddleNoiseSpeed = this.config.paddleNoiseSpeed != null ? this.config.paddleNoiseSpeed : 0.022;
+                this.rocketIntervalMs = Math.max(800, this.config.paddleRocketIntervalMs || 3000);
+                this.nextRocketTime = Date.now() + (this.config.paddleRocketInitialDelayMs || 1500);
+                this.nextRocketSide = Math.random() < 0.5 ? 'left' : 'right';
+                this.paddleRocketDamage = this.config.paddleRocketDamage || 22;
+                this.paddleRocketOptions = {
+                    initialSpeed: this.config.paddleRocketInitialSpeed != null ? this.config.paddleRocketInitialSpeed : 4.2,
+                    acceleration: this.config.paddleRocketAcceleration != null ? this.config.paddleRocketAcceleration : 0.15,
+                    radius: this.config.paddleRocketRadius != null ? this.config.paddleRocketRadius : 9,
+                    aoeRadius: this.config.paddleRocketAoe != null ? this.config.paddleRocketAoe : 110,
+                    life: this.config.paddleRocketLife != null ? this.config.paddleRocketLife : 240,
+                    trailColor: this.config.paddleRocketTrailColor || '#ff5b5b',
+                    glowColor: this.config.paddleRocketGlowColor || (this.config.paddleGlowColor || 'rgba(255, 32, 32, 0.9)')
+                };
             }
 
             _getSafeMinY() {
@@ -6008,6 +6047,114 @@
 
             _clamp(value, min, max) {
                 return Math.max(min, Math.min(max, value));
+            }
+
+            _enforceBallAngle(ball) {
+                if (!ball) return;
+                let targetSpeed = Number.isFinite(ball.speed) && ball.speed > 0 ? ball.speed : Math.hypot(ball.vx, ball.vy);
+                if (!Number.isFinite(targetSpeed) || targetSpeed <= 0) return;
+                const minRatio = Math.min(0.98, Math.max(0.2, this.ballMinHorizontalRatio || 0.7));
+                const derivedMax = Math.sqrt(Math.max(0, 1 - minRatio * minRatio));
+                const configuredMax = this.ballMaxVerticalRatio != null ? Math.max(0.05, Math.min(0.99, this.ballMaxVerticalRatio)) : derivedMax;
+                const maxRatio = Math.min(configuredMax, derivedMax);
+                const horizontalSign = ball.vx >= 0 ? 1 : -1;
+                const verticalSign = ball.vy === 0 ? (Math.random() < 0.5 ? -1 : 1) : (ball.vy > 0 ? 1 : -1);
+                let vx = Math.abs(ball.vx);
+                let vy = Math.abs(ball.vy);
+                const minHorizontal = minRatio * targetSpeed;
+                const maxVertical = maxRatio * targetSpeed;
+                if (vx < minHorizontal) vx = minHorizontal;
+                if (vx > targetSpeed) vx = targetSpeed;
+                if (vy > maxVertical) vy = maxVertical;
+                const remaining = targetSpeed * targetSpeed - vx * vx;
+                const maxVyFromRemaining = remaining > 0 ? Math.sqrt(remaining) : 0;
+                if (vy > maxVyFromRemaining) vy = maxVyFromRemaining;
+                const magnitude = Math.hypot(vx, vy);
+                if (magnitude <= 0) {
+                    vx = targetSpeed;
+                    vy = 0;
+                }
+                const scale = magnitude > 0 ? targetSpeed / magnitude : 1;
+                ball.vx = vx * horizontalSign * scale;
+                ball.vy = vy * verticalSign * scale;
+                ball.speed = targetSpeed;
+            }
+
+            _recordBallHistory(now) {
+                if (!this.ball || !Number.isFinite(this.ball.y)) return;
+                if (!Number.isFinite(now)) now = Date.now();
+                if (!this.ballHistory) this.ballHistory = [];
+                this.ballHistory.push({ time: now, y: this.ball.y });
+                const retentionMs = Math.max(1200, (this.paddleDesyncMs || 0) + 600);
+                while (this.ballHistory.length > 0 && now - this.ballHistory[0].time > retentionMs) {
+                    this.ballHistory.shift();
+                }
+            }
+
+            _getHistoricalBallY(targetTime) {
+                if (!this.ballHistory || this.ballHistory.length === 0) {
+                    return this.ball && Number.isFinite(this.ball.y) ? this.ball.y : 0;
+                }
+                if (!Number.isFinite(targetTime)) {
+                    return this.ballHistory[0].y;
+                }
+                for (let i = this.ballHistory.length - 1; i >= 0; i--) {
+                    const entry = this.ballHistory[i];
+                    if (entry.time <= targetTime) {
+                        return entry.y;
+                    }
+                }
+                return this.ballHistory[0].y;
+            }
+
+            _computePaddleNoise(side, timeScale) {
+                if (!this.paddleNoiseAmplitude || this.paddleNoiseAmplitude === 0) return 0;
+                const phaseProp = side === 'right' ? 'paddleNoisePhaseRight' : 'paddleNoisePhaseLeft';
+                const currentPhase = Number.isFinite(this[phaseProp]) ? this[phaseProp] : 0;
+                const speed = this.paddleNoiseSpeed || 0;
+                const scaledTime = Number.isFinite(timeScale) ? Math.max(0, timeScale) : 1;
+                const updatedPhase = (currentPhase + speed * scaledTime) % (Math.PI * 2);
+                this[phaseProp] = updatedPhase;
+                const offset = side === 'right' ? Math.PI / 3 : 0;
+                return Math.sin(updatedPhase + offset) * this.paddleNoiseAmplitude;
+            }
+
+            _updateRocketAttacks(now) {
+                if (!this.alive || !this.game || !Array.isArray(this.game.enemyRockets)) return;
+                if (!Number.isFinite(this.rocketIntervalMs) || this.rocketIntervalMs <= 0) return;
+                if (!Number.isFinite(now)) now = Date.now();
+                if (!this.nextRocketTime) {
+                    this.nextRocketTime = now + this.rocketIntervalMs;
+                }
+                if (now < this.nextRocketTime) return;
+                const side = this.nextRocketSide === 'right' ? 'right' : 'left';
+                const fired = this._firePaddleRocket(side);
+                if (fired) {
+                    this.nextRocketSide = side === 'left' ? 'right' : 'left';
+                    this.nextRocketTime = now + this.rocketIntervalMs;
+                } else {
+                    this.nextRocketTime = now + 600;
+                }
+            }
+
+            _firePaddleRocket(side) {
+                if (!this.game || !Array.isArray(this.game.enemyRockets)) return false;
+                const player = this.game.player;
+                if (!player || !Number.isFinite(player.x) || !Number.isFinite(player.y)) return false;
+                const paddle = side === 'right' ? this.rightPaddle : this.leftPaddle;
+                if (!paddle) return false;
+                const originX = paddle.x;
+                const originY = paddle.y;
+                const options = Object.assign({}, this.paddleRocketOptions);
+                const rocket = new EnemyRocket(originX, originY, player.x, player.y, this.paddleRocketDamage, options);
+                this.game.enemyRockets.push(rocket);
+                if (this.game.audio && typeof this.game.audio.playSound === 'function') {
+                    this.game.audio.playSound('RocketLaunch');
+                }
+                if (this.game.effects && typeof this.game.effects.createRocketTrail === 'function') {
+                    this.game.effects.createRocketTrail(originX, originY, options.trailColor || '#ff5b5b');
+                }
+                return true;
             }
 
             _circleCircleIntersect(ax, ay, ar, bx, by, br) {
@@ -6073,8 +6220,11 @@
                 const norm = Math.hypot(ball.vx, ball.vy) || 1;
                 ball.vx = (ball.vx / norm) * ball.speed;
                 ball.vy = (ball.vy / norm) * ball.speed;
+                this._enforceBallAngle(ball);
                 this.lastPaddleHitTime = now;
-                this.nextExtraBallTime = now + (this.config.extraBallSpawnDelayMs || 10000);
+                if (!this.nextExtraBallTime) {
+                    this.nextExtraBallTime = now + this.extraBallSpawnDelayMs;
+                }
                 if (this.game.effects && typeof this.game.effects.createShieldImpact === 'function') {
                     this.game.effects.createShieldImpact(ball.x - direction * ball.radius * 0.6, ball.y, Math.max(30, paddle.height * 0.6), 'paddle');
                 }
@@ -6128,18 +6278,28 @@
                     ball.x = rightLimit;
                     ball.vx = -Math.abs(ball.vx);
                 }
+                this._enforceBallAngle(ball);
+                this._recordBallHistory(now);
                 if (ball.damageFlash > 0) ball.damageFlash = Math.max(0, ball.damageFlash - timeScale);
                 if (ball.recentDamageFade > 0) ball.recentDamageFade = Math.max(0, ball.recentDamageFade - timeScale);
             }
 
-            _updatePaddles(timeScale) {
+            _updatePaddles(timeScale, now) {
                 const lerpBase = this.config.paddleFollowLerp || 0.18;
-                const lerpFactor = 1 - Math.pow(Math.max(0, 1 - lerpBase), Math.max(1, timeScale));
+                const rightBase = this.config.paddleFollowLerpRight != null ? this.config.paddleFollowLerpRight : lerpBase * 0.72;
+                const lerpFactorLeft = 1 - Math.pow(Math.max(0, 1 - lerpBase), Math.max(1, timeScale));
+                const lerpFactorRight = 1 - Math.pow(Math.max(0, 1 - rightBase), Math.max(1, timeScale));
                 const bounds = this._getVerticalBounds();
                 const leftHalf = this.leftPaddle.height / 2;
                 const rightHalf = this.rightPaddle.height / 2;
-                this.leftPaddle.y += (this.ball.y - this.leftPaddle.y) * lerpFactor;
-                this.rightPaddle.y += (this.ball.y - this.rightPaddle.y) * lerpFactor;
+                const leftNoise = this._computePaddleNoise('left', timeScale);
+                const rightNoise = this._computePaddleNoise('right', timeScale);
+                const leftTarget = this.ball.y + leftNoise;
+                const desyncMs = this.paddleDesyncMs || 0;
+                const historicalY = desyncMs > 0 ? this._getHistoricalBallY((now || Date.now()) - desyncMs) : this.ball.y;
+                const rightTarget = historicalY + rightNoise;
+                this.leftPaddle.y += (leftTarget - this.leftPaddle.y) * lerpFactorLeft;
+                this.rightPaddle.y += (rightTarget - this.rightPaddle.y) * lerpFactorRight;
                 this.leftPaddle.y = this._clamp(this.leftPaddle.y, bounds.top + leftHalf, bounds.bottom - leftHalf);
                 this.rightPaddle.y = this._clamp(this.rightPaddle.y, bounds.top + rightHalf, bounds.bottom - rightHalf);
                 if (this.leftPaddle.damageFlash > 0) this.leftPaddle.damageFlash = Math.max(0, this.leftPaddle.damageFlash - timeScale);
@@ -6725,8 +6885,9 @@
                 const motion = getMotionScale();
                 const now = Date.now();
                 this._updateBall(now, motion, timeScale);
-                this._updatePaddles(timeScale);
+                this._updatePaddles(timeScale, now);
                 this._updateExtraBalls(motion, timeScale);
+                this._updateRocketAttacks(now);
                 const scaledInterval = this.energyWaveInterval / Math.max(0.0001, timeScale);
                 if (now - this.lastEnergyWaveTime >= scaledInterval) {
                     this._emitEnergyWave();
