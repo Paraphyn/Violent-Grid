@@ -10218,6 +10218,7 @@
                 this.taken = new Set();
                 this.currentOptions = [];
                 this.keyHandler = null;
+                this.selectionLocked = false;
             }
 
             getRandomOptions(maxLevel, count = 3) {
@@ -10252,6 +10253,7 @@
                 const container = document.getElementById('upgradeContainer');
                 container.innerHTML = '';
                 this.currentOptions = options.slice();
+                this.selectionLocked = false;
                 // Centering: container is flex and will center 1, 2, or 3 cards
                 options.forEach((opt, idx) => {
                     const card = document.createElement('div');
@@ -10303,7 +10305,8 @@
             }
 
             selectUpgrade(opt) {
-                if (!opt) return;
+                if (!opt || this.selectionLocked) return;
+                this.selectionLocked = true;
                 this.taken.add(opt.key);
                 // Visual selection effect: fade out other cards, highlight selected slightly longer
                 const container = document.getElementById('upgradeContainer');
@@ -10328,6 +10331,7 @@
                         this.keyHandler = null;
                     }
                     this.currentOptions = [];
+                    this.selectionLocked = false;
                     this.game.resumeAfterUpgrade();
                 }, 350);
             }
@@ -10339,6 +10343,7 @@
                     this.keyHandler = null;
                 }
                 this.currentOptions = [];
+                this.selectionLocked = false;
             }
         }
 
