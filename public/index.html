@@ -7127,7 +7127,15 @@
 
             // Boss management
             getAvailableBossTypes() {
-                const bosses = Object.keys(ENEMY_TYPES).filter(k => ENEMY_TYPES[k] && (ENEMY_TYPES[k].isBoss || ENEMY_TYPES[k].role === 'boss'));
+                const bosses = Object.keys(ENEMY_TYPES).filter(key => {
+                    const config = ENEMY_TYPES[key];
+                    return config && (config.isBoss || config.role === 'boss');
+                });
+                const enabled = bosses.filter(key => {
+                    const config = ENEMY_TYPES[key];
+                    return config && config.bossRotationEnabled !== false;
+                });
+                if (enabled.length > 0) return enabled;
                 return bosses.length > 0 ? bosses : ['rhombus_boss'];
             }
 

@@ -128,7 +128,8 @@ const ENEMY_TYPES = {
         isBoss: true,
         bossBaseType: 'rhombus',
         bossTriangleSpawnIntervalMs: 2700,
-        deathSound: 'bossDefeated'
+        deathSound: 'bossDefeated',
+        bossRotationEnabled: true
     }
 };
 
@@ -143,7 +144,8 @@ ENEMY_TYPES['vector_snake_boss'] = {
     fillColor: '#33ffdd',
     strokeColor: '#33ffdd',
     isBoss: true,
-    bossBaseType: 'vector_snake'
+    bossBaseType: 'vector_snake',
+    bossRotationEnabled: true
 };
 
 ENEMY_TYPES['player_2_boss'] = {
@@ -164,7 +166,8 @@ ENEMY_TYPES['player_2_boss'] = {
     mineDamage: 20,
     isBoss: true,
     bossBaseType: 'player_clone',
-    displayName: 'PLAYER #2'
+    displayName: 'PLAYER #2',
+    bossRotationEnabled: true
 };
 
 ENEMY_TYPES['ping_and_pong_boss'] = {
@@ -204,7 +207,8 @@ ENEMY_TYPES['ping_and_pong_boss'] = {
     extraBallExplosionDamage: 25,
     extraBallMaxBounces: 8,
     maxExtraBalls: 4,
-    barrierInset: 56
+    barrierInset: 56,
+    bossRotationEnabled: true
 };
 
 // Boss: Tetris Cross (cross made of squares)
@@ -220,7 +224,8 @@ ENEMY_TYPES['tetris_cross_boss'] = {
     fillColor: '#ff3333',
     strokeColor: '#ff3333',
     isBoss: true,
-    bossBaseType: 'tetris_cross'
+    bossBaseType: 'tetris_cross',
+    bossRotationEnabled: true
 };
 
 // Vector Snake boss config
