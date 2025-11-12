@@ -5329,8 +5329,15 @@
                 this.minDistanceFromPlayer = this.config.minDistanceFromPlayer || 320;
                 this.maxDistanceFromPlayer = this.config.maxDistanceFromPlayer || 500;
                 this.bulletSpeed = this.config.bulletSpeed || 9.4;
-                this.bulletIntervalMs = this.config.bulletIntervalMs || 180;
+                this.bulletIntervalMs = this.config.bulletIntervalMs != null ? this.config.bulletIntervalMs : 180;
                 this.bulletSprayRadians = this.config.bulletSprayRadians || Math.PI / 16;
+                this.orbitLerp = this.config.orbitLerp != null ? this.config.orbitLerp : 0.1;
+                this.mirrorLerp = this.config.mirrorLerp != null ? this.config.mirrorLerp : 0.12;
+                this.mirrorFollowFactor = this.config.mirrorFollowFactor != null ? this.config.mirrorFollowFactor : 1.02;
+                this.fleeAcceleration = this.config.fleeAcceleration != null ? this.config.fleeAcceleration : 0.18;
+                this.fleeBraking = this.config.fleeBraking != null ? this.config.fleeBraking : 0.12;
+                this.fleeFriction = this.config.fleeFriction != null ? this.config.fleeFriction : 0.94;
+                this.fleeMaxSpeedMultiplier = this.config.fleeMaxSpeedMultiplier != null ? this.config.fleeMaxSpeedMultiplier : 1.25;
                 this.damageFlash = 0;
                 this.recentDamage = 0;
                 this.recentDamageFade = 0;
@@ -5344,10 +5351,11 @@
                 this.rocketPredictionSpeed = this.config.rocketPredictionSpeed || 7;
                 this.mineDamage = this.config.mineDamage || 25;
                 this.dashDistance = this.config.dashDistance || 280;
+                this.dashDuration = Math.max(1, this.config.dashDuration || 18);
                 this.dashState = {
                     active: false,
                     progress: 0,
-                    duration: this.config.dashDuration || 18,
+                    duration: this.dashDuration,
                     startX: this.x,
                     startY: this.y,
                     endX: this.x,
@@ -5401,6 +5409,14 @@
                 } else {
                     this.orbitRadius = clamped;
                 }
+            }
+
+            _easeInOutCubic(t) {
+                if (t <= 0) return 0;
+                if (t >= 1) return 1;
+                return t < 0.5
+                    ? 4 * t * t * t
+                    : 1 - Math.pow(-2 * t + 2, 3) / 2;
             }
 
             _predictTargetPosition(player, projectileSpeed, now, options = {}) {
@@ -5534,6 +5550,7 @@
                 this.dashState.startY = this.y;
                 this.dashState.endX = endX;
                 this.dashState.endY = endY;
+                this.dashState.duration = this.dashDuration;
                 this.invulnerable = true;
                 this.nextDashTime = now + 3200 + Math.random() * 2400;
                 if (this.game.effects && this.game.effects.createEnemyDashEffect) {
@@ -5555,7 +5572,8 @@
                 const bounds = this._getBounds();
                 const clampedTargetX = Math.max(bounds.minX, Math.min(bounds.maxX, targetX));
                 const clampedTargetY = Math.max(bounds.minY, Math.min(bounds.maxY, targetY));
-                const lerp = Math.min(1, 0.15 * timeScale);
+                const baseLerp = this.orbitLerp != null ? this.orbitLerp : 0.1;
+                const lerp = Math.min(1, Math.max(0.01, baseLerp) * timeScale);
                 const startX = this.x;
                 const startY = this.y;
                 this.x += (clampedTargetX - this.x) * lerp;
@@ -5564,11 +5582,11 @@
                 this.velocity.y = this.y - startY;
             }
 
-            _updateMirror(player) {
+            _updateMirror(player, timeScale = 1) {
                 if (!player) return;
                 const playerDx = player.x - this._lastPlayerX;
                 const playerDy = player.y - this._lastPlayerY;
-                const factor = 1.05;
+                const factor = this.mirrorFollowFactor != null ? this.mirrorFollowFactor : 1.02;
                 const startX = this.x;
                 const startY = this.y;
                 const mirroredX = this.x - playerDx * factor;
@@ -5584,14 +5602,15 @@
                 }
                 const adjust = (targetDistance - dist) * 0.12;
                 const bounds = this._getBounds();
-                let newX = mirroredX + (offsetX / dist) * adjust;
-                let newY = mirroredY + (offsetY / dist) * adjust;
-                newX = Math.max(bounds.minX, Math.min(bounds.maxX, newX));
-                newY = Math.max(bounds.minY, Math.min(bounds.maxY, newY));
-                this.velocity.x = newX - startX;
-                this.velocity.y = newY - startY;
-                this.x = newX;
-                this.y = newY;
+                let targetX = mirroredX + (offsetX / dist) * adjust;
+                let targetY = mirroredY + (offsetY / dist) * adjust;
+                targetX = Math.max(bounds.minX, Math.min(bounds.maxX, targetX));
+                targetY = Math.max(bounds.minY, Math.min(bounds.maxY, targetY));
+                const moveLerp = Math.min(1, Math.max(0.01, this.mirrorLerp != null ? this.mirrorLerp : 0.12) * timeScale);
+                this.x += (targetX - this.x) * moveLerp;
+                this.y += (targetY - this.y) * moveLerp;
+                this.velocity.x = this.x - startX;
+                this.velocity.y = this.y - startY;
             }
 
             _updateFlee(player, timeScale, motion) {
@@ -5601,18 +5620,19 @@
                 const len = Math.sqrt(dx * dx + dy * dy) || 1;
                 const awayX = dx / len;
                 const awayY = dy / len;
-                let accel = 0.25 * timeScale;
+                let accel = (this.fleeAcceleration != null ? this.fleeAcceleration : 0.25) * timeScale;
                 if (len < this.minDistanceFromPlayer) {
                     accel *= 1.6;
                 }
                 this.velocity.x += awayX * accel;
                 this.velocity.y += awayY * accel;
                 if (len > this.maxDistanceFromPlayer) {
-                    const braking = 0.18 * timeScale;
+                    const braking = (this.fleeBraking != null ? this.fleeBraking : 0.18) * timeScale;
                     this.velocity.x -= awayX * braking;
                     this.velocity.y -= awayY * braking;
                 }
-                const maxSpeed = (this.speed || 5) * 1.4;
+                const speedMultiplier = this.fleeMaxSpeedMultiplier != null ? this.fleeMaxSpeedMultiplier : 1.4;
+                const maxSpeed = (this.speed || 5) * speedMultiplier;
                 const velLen = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
                 if (velLen > maxSpeed) {
                     const s = maxSpeed / velLen;
@@ -5639,7 +5659,8 @@
                 }
                 this.x = Math.max(bounds.minX, Math.min(bounds.maxX, nextX));
                 this.y = Math.max(bounds.minY, Math.min(bounds.maxY, nextY));
-                const friction = Math.pow(0.92, timeScale);
+                const frictionBase = this.fleeFriction != null ? this.fleeFriction : 0.92;
+                const friction = Math.pow(frictionBase, timeScale);
                 this.velocity.x *= friction;
                 this.velocity.y *= friction;
             }
@@ -5721,10 +5742,15 @@
                     this._startDash(now, player);
                 }
                 if (this.dashState.active) {
+                    const prevX = this.x;
+                    const prevY = this.y;
                     this.dashState.progress += timeScale;
                     const ratio = Math.min(1, this.dashState.progress / this.dashState.duration);
-                    this.x = this.dashState.startX + (this.dashState.endX - this.dashState.startX) * ratio;
-                    this.y = this.dashState.startY + (this.dashState.endY - this.dashState.startY) * ratio;
+                    const easedRatio = this._easeInOutCubic(ratio);
+                    this.x = this.dashState.startX + (this.dashState.endX - this.dashState.startX) * easedRatio;
+                    this.y = this.dashState.startY + (this.dashState.endY - this.dashState.startY) * easedRatio;
+                    this.velocity.x = this.x - prevX;
+                    this.velocity.y = this.y - prevY;
                     if (ratio >= 1) {
                         this.dashState.active = false;
                         this.invulnerable = false;
@@ -5737,7 +5763,7 @@
                     if (this.mode === 'orbit') {
                         this._updateOrbit(player, timeScale);
                     } else if (this.mode === 'mirror') {
-                        this._updateMirror(player);
+                        this._updateMirror(player, timeScale);
                     } else {
                         this._updateFlee(player, timeScale, motion);
                     }
