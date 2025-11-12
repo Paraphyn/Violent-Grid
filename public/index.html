@@ -6081,6 +6081,12 @@
                 ball.speed = targetSpeed;
             }
 
+            _playBounceSound() {
+                if (this.game && this.game.audio && typeof this.game.audio.playSound === 'function') {
+                    this.game.audio.playSound('PongBossBallBounce');
+                }
+            }
+
             _recordBallHistory(now) {
                 if (!this.ball || !Number.isFinite(this.ball.y)) return;
                 if (!Number.isFinite(now)) now = Date.now();
@@ -6229,7 +6235,7 @@
                 if (this.game.effects && typeof this.game.effects.createShieldImpact === 'function') {
                     this.game.effects.createShieldImpact(ball.x - direction * ball.radius * 0.6, ball.y, Math.max(30, paddle.height * 0.6), 'paddle');
                 }
-                if (this.game.audio) this.game.audio.playSound('enemyDash');
+                this._playBounceSound();
             }
 
             _handlePaddleCollisions(ball, now) {
@@ -6241,6 +6247,7 @@
                     } else {
                         ball.x = leftPlane + ball.radius;
                         ball.vx = Math.abs(ball.vx);
+                        this._playBounceSound();
                     }
                 }
                 const rightPlane = this.rightPaddle.x - this.rightPaddle.width / 2;
@@ -6250,6 +6257,7 @@
                     } else {
                         ball.x = rightPlane - ball.radius;
                         ball.vx = -Math.abs(ball.vx);
+                        this._playBounceSound();
                     }
                 }
             }
@@ -6265,9 +6273,11 @@
                 if (ball.y < topLimit) {
                     ball.y = topLimit;
                     ball.vy = Math.abs(ball.vy);
+                    this._playBounceSound();
                 } else if (ball.y > bottomLimit) {
                     ball.y = bottomLimit;
                     ball.vy = -Math.abs(ball.vy);
+                    this._playBounceSound();
                 }
                 this._handlePaddleCollisions(ball, now);
                 const leftLimit = ball.radius;
@@ -6275,9 +6285,11 @@
                 if (ball.x < leftLimit) {
                     ball.x = leftLimit;
                     ball.vx = Math.abs(ball.vx);
+                    this._playBounceSound();
                 } else if (ball.x > rightLimit) {
                     ball.x = rightLimit;
                     ball.vx = -Math.abs(ball.vx);
+                    this._playBounceSound();
                 }
                 this._enforceBallAngle(ball);
                 this._recordBallHistory(now);
