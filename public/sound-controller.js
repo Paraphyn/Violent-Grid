@@ -20,6 +20,7 @@
             BossAlertSound: { file: 'boss-alert.wav', loop: true },
             bossSpawnRhomboss: { file: 'rhomboss-spawn.wav', loop: false },
             bossSpawnPlayerTwo: { file: 'player2-spawn.wav', loop: false },
+            bossSpawnPingAndPong: { file: 'pingandpong-spawn.wav', loop: false },
             bossSpawnTetris: { file: 'tetris-spawn.wav', loop: false },
             bossSpawnVectorSnake: { file: 'vector-snake-spawn.wav', loop: false },
             killerTriangleDie: { file: 'killer-triangle-die.wav', loop: false },
