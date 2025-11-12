@@ -8648,6 +8648,108 @@
                 }
             }
 
+            _handlePlayerExplosion(x, y, radius, damage, options = {}) {
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+                if (!Number.isFinite(radius) || radius <= 0) return;
+                if (!Number.isFinite(damage) || damage <= 0) return;
+                const type = options.type === 'mine' ? 'mine' : 'rocket';
+                const applyBossDamage = options.applyBossDamage !== false;
+                const includeTetris = options.includeTetris === true;
+                const playEffects = options.playEffects !== false;
+                const shakeIntensity = options.shakeIntensity != null
+                    ? options.shakeIntensity
+                    : (type === 'rocket' ? 7 : 6);
+                const shakeDuration = options.shakeDuration != null
+                    ? options.shakeDuration
+                    : (type === 'rocket' ? 260 : 240);
+
+                if (playEffects && this.effects && typeof this.effects.createRocketExplosionRing === 'function') {
+                    this.effects.createRocketExplosionRing(x, y, radius);
+                    if (this.audio && typeof this.audio.playSound === 'function') {
+                        this.audio.playSound('RocketExplotion');
+                    }
+                    if (typeof this.shakeCanvas === 'function') {
+                        this.shakeCanvas(shakeIntensity, shakeDuration);
+                    }
+                }
+
+                const now = Date.now();
+                for (let ei = this.enemies.length - 1; ei >= 0; ei--) {
+                    const enemy = this.enemies[ei];
+                    if (!enemy) continue;
+                    const enemyRadius = typeof enemy.radius === 'number' ? enemy.radius : 0;
+                    const combinedRadius = radius + enemyRadius;
+                    const dx = enemy.x - x;
+                    const dy = enemy.y - y;
+                    if (Math.abs(dx) > combinedRadius || Math.abs(dy) > combinedRadius) continue;
+                    if (dx * dx + dy * dy <= combinedRadius * combinedRadius) {
+                        if ((enemy.spawnShieldUntil && now < enemy.spawnShieldUntil) ||
+                            ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) {
+                            continue;
+                        }
+                        const damageType = type;
+                        const alive = enemy.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
+                            damageType,
+                            impactX: x,
+                            impactY: y
+                        });
+                        if (!alive) {
+                            this.handleEnemyKilled(enemy, { cause: damageType, impactX: x, impactY: y });
+                        }
+                    }
+                }
+
+                if (!applyBossDamage || !this.inBossPhase || !this.activeBoss) return;
+                const boss = this.activeBoss;
+                if (boss instanceof TetrisCrossBoss) {
+                    if (!includeTetris || !this.tetrisManager || !Array.isArray(this.tetrisManager.activePieces)) return;
+                    for (let p = this.tetrisManager.activePieces.length - 1; p >= 0; p--) {
+                        const piece = this.tetrisManager.activePieces[p];
+                        if (!piece || piece.dying || typeof piece.getCells !== 'function') continue;
+                        const cells = piece.getCells();
+                        for (let c = 0; c < cells.length; c++) {
+                            const cell = cells[c];
+                            const dx = cell.x - x;
+                            const dy = cell.y - y;
+                            if (dx * dx + dy * dy <= radius * radius) {
+                                piece.hp -= damage;
+                                piece.damageFlash = 12;
+                                if (piece.hp <= 0) {
+                                    if (typeof piece.startDeath === 'function') piece.startDeath(this.effects);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    return;
+                }
+                if (typeof boss.handleAoeDamage === 'function') {
+                    boss.handleAoeDamage(x, y, radius, damage, this.effects, this.audio);
+                }
+            }
+
+            _detonatePlayerRocket(rocket, options = {}) {
+                if (!rocket) return;
+                this._handlePlayerExplosion(
+                    rocket.x,
+                    rocket.y,
+                    rocket.aoeRadius,
+                    rocket.damage,
+                    Object.assign({ type: 'rocket', includeTetris: true }, options)
+                );
+            }
+
+            _detonatePlayerMine(mine, options = {}) {
+                if (!mine) return;
+                this._handlePlayerExplosion(
+                    mine.x,
+                    mine.y,
+                    mine.aoeRadius,
+                    mine.damage,
+                    Object.assign({ type: 'mine', includeTetris: false }, options)
+                );
+            }
+
             shouldSuppressXpDropForEnemy(enemy) {
                 if (!enemy) return false;
                 if (!(this.inBossPhase && this.activeBoss && this.activeBoss.type === 'rhombus_boss')) {
@@ -8931,146 +9033,40 @@
                                 }
                             }
                             if (!intercepted) {
+                                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                    const boss = this.activeBoss;
+                                    const bossRadius = typeof boss.radius === 'number' ? boss.radius : 0;
+                                    const combinedRadius = (r.radius || 0) + bossRadius;
+                                    const dxBoss = r.x - boss.x;
+                                    const dyBoss = r.y - boss.y;
+                                    if (dxBoss * dxBoss + dyBoss * dyBoss <= combinedRadius * combinedRadius) {
+                                        this._detonatePlayerRocket(r);
+                                        continue;
+                                    }
+                                }
                                 this.rockets[write++] = r;
                             }
                         } else {
-                            // On removal (out of bounds or life ended), explode
-                            if (this.effects && this.effects.createRocketExplosionRing) {
-                                this.effects.createRocketExplosionRing(r.x, r.y, r.aoeRadius);
-                                this.audio.playSound('RocketExplotion');
-                                if (this.shakeCanvas) this.shakeCanvas(6, 250);
-                            }
-                            // Apply AoE damage to enemies
-                            const baseRadius = r.aoeRadius;
-                            for (let ei = this.enemies.length - 1; ei >= 0; ei--) {
-                                const enemy = this.enemies[ei];
-                                if (!enemy) continue;
-                                const enemyRadius = typeof enemy.radius === 'number' ? enemy.radius : 0;
-                                const combinedRadius = baseRadius + enemyRadius;
-                                const dx = enemy.x - r.x;
-                                const dy = enemy.y - r.y;
-                                if (Math.abs(dx) > combinedRadius || Math.abs(dy) > combinedRadius) continue;
-                                const d2 = dx * dx + dy * dy;
-                                if (d2 <= combinedRadius * combinedRadius) {
-                                    if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
-                                    if (!enemy.takeDamage(r.damage, this.effects, this.score, this.ctx, this.audio, {
-                                        damageType: 'rocket',
-                                        impactX: r.x,
-                                        impactY: r.y
-                                    })) {
-                                        this.handleEnemyKilled(enemy, { cause: 'rocket', impactX: r.x, impactY: r.y });
-                                    }
-                                }
-                            }
-                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
-                                const boss = this.activeBoss;
-                                const bossRadius = boss.radius || 0;
-                                const dxBoss = boss.x - r.x;
-                                const dyBoss = boss.y - r.y;
-                                const rrBoss = (r.radius || 0) + bossRadius;
-                                if (dxBoss * dxBoss + dyBoss * dyBoss <= rrBoss * rrBoss) {
-                                    const exploded = this.rockets.splice(ri, 1)[0];
-                                    const ex = exploded ? exploded.x : r.x;
-                                    const ey = exploded ? exploded.y : r.y;
-                                    const aoe = exploded ? exploded.aoeRadius : r.aoeRadius;
-                                    const damage = exploded ? exploded.damage : r.damage;
-                                    if (exploded && this.effects && this.effects.createRocketExplosionRing) {
-                                        this.effects.createRocketExplosionRing(ex, ey, aoe);
-                                        this.audio.playSound('RocketExplotion');
-                                        if (this.shakeCanvas) this.shakeCanvas(7, 260);
-                                    }
-                                    for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
-                                        const en = this.enemies[ej];
-                                        if (!en) continue;
-                                        const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
-                                        const combinedRadius = aoe + enemyRadius;
-                                        const ddx = en.x - ex;
-                                        const ddy = en.y - ey;
-                                        if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
-                                        if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
-                                            if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
-                                            if (!en.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
-                                                damageType: 'rocket',
-                                                impactX: ex,
-                                                impactY: ey
-                                            })) {
-                                                this.handleEnemyKilled(en, { cause: 'rocket', impactX: ex, impactY: ey });
-                                            }
-                                        }
-                                    }
-                                    if (this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
-                                        this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
-                                    } else if (this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
-                                        this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
-                                    }
-                                    continue;
-                                }
-                            }
-                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
-                                // Apply AoE to Tetris Cross boss pieces
-                                for (let p = this.tetrisManager.activePieces.length - 1; p >= 0; p--) {
-                                    const piece = this.tetrisManager.activePieces[p];
-                                    if (!piece || piece.dying) continue;
-                                    const cells = piece.getCells();
-                                    for (let c = 0; c < cells.length; c++) {
-                                        const cell = cells[c];
-                                        const dx = cell.x - r.x;
-                                        const dy = cell.y - r.y;
-                                        if (dx * dx + dy * dy <= (r.aoeRadius) * (r.aoeRadius)) {
-                                            piece.hp -= r.damage;
-                                            piece.damageFlash = 12;
-                                            if (piece.hp <= 0) {
-                                                piece.startDeath(this.effects);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
-                                this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
-                            } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
-                                this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
-                            } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
-                                this.activeBoss.handleAoeDamage(r.x, r.y, r.aoeRadius, r.damage, this.effects, this.audio);
-                            }
+                            this._detonatePlayerRocket(r, { playEffects: true, shakeIntensity: 6, shakeDuration: 250 });
                         }
                     }
                     this.rockets.length = write;
                     if (pendingBossRocketExplosions.length > 0) {
                         for (let i = 0; i < pendingBossRocketExplosions.length; i++) {
                             const explosion = pendingBossRocketExplosions[i];
+                            if (!explosion) continue;
                             const ex = explosion.x;
                             const ey = explosion.y;
                             const aoe = explosion.radius;
                             const damage = explosion.damage;
-                            if (this.effects && this.effects.createRocketExplosionRing) {
-                                this.effects.createRocketExplosionRing(ex, ey, aoe);
-                                this.audio.playSound('RocketExplotion');
-                                if (this.shakeCanvas) this.shakeCanvas(6, 250);
-                            }
-                            const baseRadius = aoe;
-                            for (let ei = this.enemies.length - 1; ei >= 0; ei--) {
-                                const enemy = this.enemies[ei];
-                                if (!enemy) continue;
-                                const enemyRadius = typeof enemy.radius === 'number' ? enemy.radius : 0;
-                                const combinedRadius = baseRadius + enemyRadius;
-                                const dx = enemy.x - ex;
-                                const dy = enemy.y - ey;
-                                if (Math.abs(dx) > combinedRadius || Math.abs(dy) > combinedRadius) continue;
-                                if (dx * dx + dy * dy <= combinedRadius * combinedRadius) {
-                                    if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
-                                    if (!enemy.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
-                                        damageType: 'rocket',
-                                        impactX: ex,
-                                        impactY: ey
-                                    })) {
-                                        this.handleEnemyKilled(enemy, { cause: 'rocket', impactX: ex, impactY: ey });
-                                    }
-                                }
-                            }
-                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss && explosion.applyDamageToBoss) {
-                                this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
-                            }
+                            if (!Number.isFinite(ex) || !Number.isFinite(ey) || !Number.isFinite(aoe) || aoe <= 0) continue;
+                            this._handlePlayerExplosion(ex, ey, aoe, damage, {
+                                type: 'rocket',
+                                includeTetris: false,
+                                shakeIntensity: 6,
+                                shakeDuration: 250,
+                                applyBossDamage: explosion.applyDamageToBoss === undefined ? true : !!explosion.applyDamageToBoss
+                            });
                         }
                     }
                 }
@@ -9113,123 +9109,40 @@
                                 }
                             }
                             if (!intercepted) {
+                                if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                                    const boss = this.activeBoss;
+                                    const bossRadius = typeof boss.radius === 'number' ? boss.radius : 0;
+                                    const combinedRadius = (m.radius || 0) + bossRadius;
+                                    const dxBoss = m.x - boss.x;
+                                    const dyBoss = m.y - boss.y;
+                                    if (dxBoss * dxBoss + dyBoss * dyBoss <= combinedRadius * combinedRadius) {
+                                        this._detonatePlayerMine(m, { shakeIntensity: 7, shakeDuration: 240 });
+                                        continue;
+                                    }
+                                }
                                 this.mines[write++] = m;
                             }
                         } else {
-                            // On life end, explode
-                            if (this.effects && this.effects.createRocketExplosionRing) {
-                                this.effects.createRocketExplosionRing(m.x, m.y, m.aoeRadius);
-                                this.audio.playSound('RocketExplotion');
-                                if (this.shakeCanvas) this.shakeCanvas(6, 240);
-                            }
-                            // AoE damage to enemies
-                            const baseRadius = m.aoeRadius;
-                            for (let ei = this.enemies.length - 1; ei >= 0; ei--) {
-                                const enemy = this.enemies[ei];
-                                if (!enemy) continue;
-                                const enemyRadius = typeof enemy.radius === 'number' ? enemy.radius : 0;
-                                const combinedRadius = baseRadius + enemyRadius;
-                                const dx = enemy.x - m.x;
-                                const dy = enemy.y - m.y;
-                                if (Math.abs(dx) > combinedRadius || Math.abs(dy) > combinedRadius) continue;
-                                const d2 = dx * dx + dy * dy;
-                                if (d2 <= combinedRadius * combinedRadius) {
-                                    if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
-                                    if (!enemy.takeDamage(m.damage, this.effects, this.score, this.ctx, this.audio, {
-                                        damageType: 'mine',
-                                        impactX: m.x,
-                                        impactY: m.y
-                                    })) {
-                                        this.handleEnemyKilled(enemy, { cause: 'mine', impactX: m.x, impactY: m.y });
-                                    }
-                                }
-                            }
-                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
-                                const boss = this.activeBoss;
-                                const bossRadius = boss.radius || 0;
-                                const dxBoss = boss.x - m.x;
-                                const dyBoss = boss.y - m.y;
-                                const rrBoss = (m.radius || 0) + bossRadius;
-                                if (dxBoss * dxBoss + dyBoss * dyBoss <= rrBoss * rrBoss) {
-                                    const exploded = this.mines.splice(mi, 1)[0];
-                                    const ex = exploded ? exploded.x : m.x;
-                                    const ey = exploded ? exploded.y : m.y;
-                                    const aoe = exploded ? exploded.aoeRadius : m.aoeRadius;
-                                    const damage = exploded ? exploded.damage : m.damage;
-                                    if (exploded && this.effects && this.effects.createRocketExplosionRing) {
-                                        this.effects.createRocketExplosionRing(ex, ey, aoe);
-                                        this.audio.playSound('RocketExplotion');
-                                        if (this.shakeCanvas) this.shakeCanvas(7, 240);
-                                    }
-                                    for (let ej = this.enemies.length - 1; ej >= 0; ej--) {
-                                        const en = this.enemies[ej];
-                                        if (!en) continue;
-                                        const enemyRadius = typeof en.radius === 'number' ? en.radius : 0;
-                                        const combinedRadius = aoe + enemyRadius;
-                                        const ddx = en.x - ex;
-                                        const ddy = en.y - ey;
-                                        if (Math.abs(ddx) > combinedRadius || Math.abs(ddy) > combinedRadius) continue;
-                                        if (ddx * ddx + ddy * ddy <= combinedRadius * combinedRadius) {
-                                            if ((en.spawnShieldUntil && Date.now() < en.spawnShieldUntil) || ((en.type === 'rhombus' || en.type === 'rhombus_boss') && en.invulnerable)) continue;
-                                            if (!en.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
-                                                damageType: 'mine',
-                                                impactX: ex,
-                                                impactY: ey
-                                            })) {
-                                                this.handleEnemyKilled(en, { cause: 'mine', impactX: ex, impactY: ey });
-                                            }
-                                        }
-                                    }
-                                    if (this.activeBoss && this.activeBoss instanceof PingAndPongBoss) {
-                                        this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
-                                    } else if (this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
-                                        this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
-                                    }
-                                    continue;
-                                } else {
-                                    this.activeBoss.handleAoeDamage(m.x, m.y, m.aoeRadius, m.damage, this.effects, this.audio);
-                                }
-                            } else if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
-                                this.activeBoss.handleAoeDamage(m.x, m.y, m.aoeRadius, m.damage, this.effects, this.audio);
-                            }
+                            this._detonatePlayerMine(m, { playEffects: true, shakeIntensity: 6, shakeDuration: 240 });
                         }
                     }
                     this.mines.length = write;
                     if (pendingBossMineExplosions.length > 0) {
                         for (let i = 0; i < pendingBossMineExplosions.length; i++) {
                             const explosion = pendingBossMineExplosions[i];
+                            if (!explosion) continue;
                             const ex = explosion.x;
                             const ey = explosion.y;
                             const aoe = explosion.radius;
                             const damage = explosion.damage;
-                            if (this.effects && this.effects.createRocketExplosionRing) {
-                                this.effects.createRocketExplosionRing(ex, ey, aoe);
-                                this.audio.playSound('RocketExplotion');
-                                if (this.shakeCanvas) this.shakeCanvas(6, 240);
-                            }
-                            const baseRadius = aoe;
-                            for (let ei = this.enemies.length - 1; ei >= 0; ei--) {
-                                const enemy = this.enemies[ei];
-                                if (!enemy) continue;
-                                const enemyRadius = typeof enemy.radius === 'number' ? enemy.radius : 0;
-                                const combinedRadius = baseRadius + enemyRadius;
-                                const dx = enemy.x - ex;
-                                const dy = enemy.y - ey;
-                                if (Math.abs(dx) > combinedRadius || Math.abs(dy) > combinedRadius) continue;
-                                if (dx * dx + dy * dy <= combinedRadius * combinedRadius) {
-                                    if ((enemy.spawnShieldUntil && Date.now() < enemy.spawnShieldUntil) || ((enemy.type === 'rhombus' || enemy.type === 'rhombus_boss') && enemy.invulnerable)) continue;
-                                    if (!enemy.takeDamage(damage, this.effects, this.score, this.ctx, this.audio, {
-                                        damageType: 'mine',
-                                        impactX: ex,
-                                        impactY: ey
-                                    })) {
-                                        this.handleEnemyKilled(enemy, { cause: 'mine', impactX: ex, impactY: ey });
-                                    }
-                                }
-                            }
-                            if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PingAndPongBoss && explosion.applyDamageToBoss) {
-                                this.activeBoss.handleAoeDamage(ex, ey, aoe, damage, this.effects, this.audio);
-                            }
+                            if (!Number.isFinite(ex) || !Number.isFinite(ey) || !Number.isFinite(aoe) || aoe <= 0) continue;
+                            this._handlePlayerExplosion(ex, ey, aoe, damage, {
+                                type: 'mine',
+                                includeTetris: false,
+                                shakeIntensity: 6,
+                                shakeDuration: 240,
+                                applyBossDamage: explosion.applyDamageToBoss === undefined ? true : !!explosion.applyDamageToBoss
+                            });
                         }
                     }
                 }
@@ -9358,6 +9271,18 @@
                             continue outerRocket;
                         }
                     }
+                      if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                          const boss = this.activeBoss;
+                          const bossRadius = typeof boss.radius === 'number' ? boss.radius : 0;
+                          const combinedRadius = (r.radius || 0) + bossRadius;
+                          const dxBoss = r.x - boss.x;
+                          const dyBoss = r.y - boss.y;
+                          if (dxBoss * dxBoss + dyBoss * dyBoss <= combinedRadius * combinedRadius) {
+                              const exploded = this.rockets.splice(ri, 1)[0] || r;
+                              this._detonatePlayerRocket(exploded);
+                              continue outerRocket;
+                          }
+                      }
                       if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
                           const segments = Array.isArray(this.activeBoss.segments) ? this.activeBoss.segments : [];
                           for (let si = segments.length - 1; si >= 0; si--) {
@@ -9470,6 +9395,18 @@
                             continue outerMine;
                         }
                     }
+                      if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof PlayerTwoBoss) {
+                          const boss = this.activeBoss;
+                          const bossRadius = typeof boss.radius === 'number' ? boss.radius : 0;
+                          const combinedRadius = (m.radius || 0) + bossRadius;
+                          const dxBoss = m.x - boss.x;
+                          const dyBoss = m.y - boss.y;
+                          if (dxBoss * dxBoss + dyBoss * dyBoss <= combinedRadius * combinedRadius) {
+                              const exploded = this.mines.splice(mi, 1)[0] || m;
+                              this._detonatePlayerMine(exploded, { shakeIntensity: 7, shakeDuration: 240 });
+                              continue outerMine;
+                          }
+                      }
                       if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof VectorSnakeBoss) {
                           const segments = Array.isArray(this.activeBoss.segments) ? this.activeBoss.segments : [];
                           for (let si = segments.length - 1; si >= 0; si--) {
