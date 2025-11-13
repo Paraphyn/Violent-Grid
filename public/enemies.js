@@ -344,7 +344,7 @@ const WAVE_GROUPS = [
     ],
     // Group 3 (example: original waves 7-9)
     [
-        { enemies: { cubes: 5, dashSquares: 5, triangles: 0, octagons: 5, rhombuses: 5 }, spawnTime: 15000, simultaneousSpawns: 1 },
+        { enemies: { cubes: 10, dashSquares: 6, triangles: 0, octagons: 0, rhombuses: 4 }, spawnTime: 15000, simultaneousSpawns: 2 },
         { enemies: { cubes: 0, triangles: 12, octagons: 0, rhombuses: 5 }, spawnTime: 25000, simultaneousSpawns: 1, eliteSpawns: 
             [
                 { type: 'killer_triangle', count: 3, initialDelayMs: 4000, repeatDelayMs: 6000 }
