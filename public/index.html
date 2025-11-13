@@ -8003,7 +8003,7 @@
                     this.gridPatternCanvas.height = gridSize * 2;
                     const gctx = this.gridPatternCanvas.getContext('2d');
                     // Slightly stronger base visibility for grid
-                    gctx.strokeStyle = 'rgba(255, 210, 210, 0.27)';
+                    gctx.strokeStyle = 'rgba(255, 190, 190, 0.2)';
                     gctx.lineWidth = 1;
                     // One vertical and one horizontal line per grid
                     for (let x = 0; x <= this.gridPatternCanvas.width; x += gridSize) {
@@ -8017,13 +8017,11 @@
                 this.ctx.save();
                 // Base alpha a bit higher; stronger pulse during boss presence
                 this.ctx.globalAlpha = this.inBossPhase && this.activeBoss
-                    ? (0.28 + 0.28 * pulse)
-                    : 0.22;
+                    ? (0.25 + 0.25 * pulse)
+                    : 0.18;
                 this.ctx.fillStyle = this.gridPattern;
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
                 this.ctx.restore();
-
-                this.drawPerspectiveField();
 
                   const blinkState = this.gridBlink;
                   const blinkActive = blinkState && blinkState.activeUntil && timeMs < blinkState.activeUntil;
@@ -8089,126 +8087,6 @@
                     }
                     this.ctx.restore();
                 }
-            }
-            
-            drawPerspectiveField() {
-                if (!this.canvas || !this.ctx) return;
-                const ctx = this.ctx;
-                const width = this.canvas.width;
-                const height = this.canvas.height;
-                const centerX = width / 2;
-                const vanishingY = height * 0.18;
-                const bottomY = height * 0.96;
-                const topHalfWidth = width * 0.22;
-                const bottomHalfWidth = width * 0.56;
-                const depthHeight = bottomY - vanishingY;
-
-                ctx.save();
-
-                const depthGradient = ctx.createLinearGradient(centerX, vanishingY, centerX, bottomY);
-                depthGradient.addColorStop(0, 'rgba(45, 18, 70, 0.55)');
-                depthGradient.addColorStop(0.42, 'rgba(28, 12, 55, 0.4)');
-                depthGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                ctx.fillStyle = depthGradient;
-                ctx.beginPath();
-                ctx.moveTo(centerX - topHalfWidth, vanishingY);
-                ctx.lineTo(centerX + topHalfWidth, vanishingY);
-                ctx.lineTo(centerX + bottomHalfWidth, bottomY);
-                ctx.lineTo(centerX - bottomHalfWidth, bottomY);
-                ctx.closePath();
-                ctx.fill();
-
-                const sideOverlap = width * 0.02;
-                const leftShade = ctx.createLinearGradient(centerX - topHalfWidth, vanishingY, centerX - bottomHalfWidth - sideOverlap, bottomY);
-                leftShade.addColorStop(0, 'rgba(25, 10, 35, 0.45)');
-                leftShade.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                ctx.fillStyle = leftShade;
-                ctx.beginPath();
-                ctx.moveTo(centerX - topHalfWidth, vanishingY);
-                ctx.lineTo(centerX - bottomHalfWidth, bottomY);
-                ctx.lineTo(centerX - bottomHalfWidth - sideOverlap, bottomY);
-                ctx.lineTo(centerX - topHalfWidth - sideOverlap * 0.6, vanishingY);
-                ctx.closePath();
-                ctx.fill();
-
-                const rightShade = ctx.createLinearGradient(centerX + topHalfWidth, vanishingY, centerX + bottomHalfWidth + sideOverlap, bottomY);
-                rightShade.addColorStop(0, 'rgba(25, 10, 35, 0.45)');
-                rightShade.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                ctx.fillStyle = rightShade;
-                ctx.beginPath();
-                ctx.moveTo(centerX + topHalfWidth, vanishingY);
-                ctx.lineTo(centerX + bottomHalfWidth, bottomY);
-                ctx.lineTo(centerX + bottomHalfWidth + sideOverlap, bottomY);
-                ctx.lineTo(centerX + topHalfWidth + sideOverlap * 0.6, vanishingY);
-                ctx.closePath();
-                ctx.fill();
-
-                const lidHeight = height * 0.08;
-                const lidHalfWidth = topHalfWidth * 0.6;
-                ctx.fillStyle = 'rgba(70, 30, 95, 0.35)';
-                ctx.strokeStyle = 'rgba(255, 220, 255, 0.25)';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(centerX - lidHalfWidth, vanishingY - lidHeight);
-                ctx.lineTo(centerX + lidHalfWidth, vanishingY - lidHeight);
-                ctx.lineTo(centerX + topHalfWidth, vanishingY);
-                ctx.lineTo(centerX - topHalfWidth, vanishingY);
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-
-                ctx.globalCompositeOperation = 'lighter';
-                ctx.lineWidth = 1.1;
-                ctx.strokeStyle = 'rgba(255, 215, 215, 0.32)';
-                const columnCount = 8;
-                for (let i = 0; i <= columnCount; i++) {
-                    const t = i / columnCount;
-                    const xTop = centerX - topHalfWidth + (topHalfWidth * 2) * t;
-                    const xBottom = centerX - bottomHalfWidth + (bottomHalfWidth * 2) * t;
-                    ctx.beginPath();
-                    ctx.moveTo(xTop, vanishingY);
-                    ctx.lineTo(xBottom, bottomY);
-                    ctx.stroke();
-                }
-
-                ctx.strokeStyle = 'rgba(255, 215, 215, 0.2)';
-                const rowCount = 10;
-                for (let r = 1; r < rowCount; r++) {
-                    const t = r / rowCount;
-                    const y = vanishingY + depthHeight * t;
-                    const halfWidth = topHalfWidth + (bottomHalfWidth - topHalfWidth) * t;
-                    ctx.beginPath();
-                    ctx.moveTo(centerX - halfWidth, y);
-                    ctx.lineTo(centerX + halfWidth, y);
-                    ctx.stroke();
-                }
-                ctx.globalCompositeOperation = 'source-over';
-
-                const glowHeight = height * 0.12;
-                const glowTopHalfWidth = topHalfWidth * 1.2;
-                const glow = ctx.createRadialGradient(centerX, bottomY, 0, centerX, bottomY, width * 0.65);
-                glow.addColorStop(0, 'rgba(255, 220, 220, 0.1)');
-                glow.addColorStop(1, 'rgba(255, 220, 220, 0)');
-                ctx.fillStyle = glow;
-                ctx.beginPath();
-                ctx.moveTo(centerX - bottomHalfWidth, bottomY);
-                ctx.lineTo(centerX + bottomHalfWidth, bottomY);
-                ctx.lineTo(centerX + glowTopHalfWidth, bottomY - glowHeight);
-                ctx.lineTo(centerX - glowTopHalfWidth, bottomY - glowHeight);
-                ctx.closePath();
-                ctx.fill();
-
-                ctx.strokeStyle = 'rgba(255, 230, 230, 0.5)';
-                ctx.lineWidth = 1.6;
-                ctx.beginPath();
-                ctx.moveTo(centerX - topHalfWidth, vanishingY);
-                ctx.lineTo(centerX + topHalfWidth, vanishingY);
-                ctx.lineTo(centerX + bottomHalfWidth, bottomY);
-                ctx.lineTo(centerX - bottomHalfWidth, bottomY);
-                ctx.closePath();
-                ctx.stroke();
-
-                ctx.restore();
             }
             
             startGame() {
