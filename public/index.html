@@ -8003,25 +8003,54 @@
                     this.gridPatternCanvas.height = gridSize * 2;
                     const gctx = this.gridPatternCanvas.getContext('2d');
                     // Slightly stronger base visibility for grid
-                    gctx.strokeStyle = 'rgba(255, 190, 190, 0.2)';
+                    gctx.strokeStyle = 'rgba(255, 135, 135, 0.35)';
                     gctx.lineWidth = 1;
                     // One vertical and one horizontal line per grid
                     for (let x = 0; x <= this.gridPatternCanvas.width; x += gridSize) {
-                        gctx.beginPath(); gctx.moveTo(x, 0); gctx.lineTo(x, this.gridPatternCanvas.height); gctx.stroke();
+                        gctx.beginPath();
+                        gctx.moveTo(x, 0);
+                        gctx.lineTo(x, this.gridPatternCanvas.height);
+                        gctx.stroke();
                     }
                     for (let y = 0; y <= this.gridPatternCanvas.height; y += gridSize) {
-                        gctx.beginPath(); gctx.moveTo(0, y); gctx.lineTo(this.gridPatternCanvas.width, y); gctx.stroke();
+                        gctx.beginPath();
+                        gctx.moveTo(0, y);
+                        gctx.lineTo(this.gridPatternCanvas.width, y);
+                        gctx.stroke();
                     }
                     this.gridPattern = this.ctx.createPattern(this.gridPatternCanvas, 'repeat');
                 }
                 this.ctx.save();
                 // Base alpha a bit higher; stronger pulse during boss presence
+                const basePulseAlpha = 0.2 + 0.15 * pulse;
                 this.ctx.globalAlpha = this.inBossPhase && this.activeBoss
-                    ? (0.25 + 0.25 * pulse)
-                    : 0.18;
+                    ? Math.min(0.4, basePulseAlpha + 0.1)
+                    : Math.min(0.3, basePulseAlpha);
                 this.ctx.fillStyle = this.gridPattern;
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
                 this.ctx.restore();
+
+                // Gentle red pulsation overlay on top of the base grid
+                const pulsationLineAlpha = 0.06 + 0.12 * pulse;
+                if (pulsationLineAlpha > 0.01) {
+                    this.ctx.save();
+                    this.ctx.strokeStyle = `rgba(255, 70, 70, ${pulsationLineAlpha.toFixed(3)})`;
+                    this.ctx.lineWidth = 0.8 + 0.6 * pulse;
+                    this.ctx.globalCompositeOperation = 'lighter';
+                    for (let x = -gridSize; x <= this.canvas.width + gridSize; x += gridSize) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(x, 0);
+                        this.ctx.lineTo(x, this.canvas.height);
+                        this.ctx.stroke();
+                    }
+                    for (let y = -gridSize; y <= this.canvas.height + gridSize; y += gridSize) {
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(0, y);
+                        this.ctx.lineTo(this.canvas.width, y);
+                        this.ctx.stroke();
+                    }
+                    this.ctx.restore();
+                }
 
                   const blinkState = this.gridBlink;
                   const blinkActive = blinkState && blinkState.activeUntil && timeMs < blinkState.activeUntil;
