@@ -8023,6 +8023,41 @@
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
                 this.ctx.restore();
 
+                const inBattle = !this.gameOver;
+                if (inBattle) {
+                    const beamPeriodMs = 8000;
+                    const beamProgress = (timeMs % beamPeriodMs) / beamPeriodMs;
+                    const beamWave = 0.5 + 0.5 * Math.sin(beamProgress * Math.PI * 2);
+
+                    // Base dark red tint that slowly breathes
+                    const baseDarkAlpha = 0.22 + 0.18 * beamWave;
+                    this.ctx.save();
+                    this.ctx.fillStyle = `rgba(8, 0, 0, ${baseDarkAlpha})`;
+                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.ctx.restore();
+
+                    // Slow moving red beam sweeping across the grid
+                    const beamWidth = this.canvas.width * 1.6;
+                    const travelRange = this.canvas.width + beamWidth * 0.4;
+                    const beamOffset = -beamWidth * 0.5 + beamProgress * travelRange;
+                    const coreAlpha = 0.16 + 0.14 * beamWave;
+                    const edgeAlpha = coreAlpha * 0.35;
+
+                    this.ctx.save();
+                    this.ctx.translate(beamOffset, 0);
+                    this.ctx.globalCompositeOperation = 'lighter';
+                    const gradient = this.ctx.createLinearGradient(0, 0, beamWidth, this.canvas.height);
+                    gradient.addColorStop(0, `rgba(150, 0, 0, ${edgeAlpha})`);
+                    gradient.addColorStop(0.45, `rgba(200, 0, 0, ${coreAlpha * 0.6})`);
+                    gradient.addColorStop(0.5, `rgba(255, 45, 45, ${coreAlpha})`);
+                    gradient.addColorStop(0.55, `rgba(200, 0, 0, ${coreAlpha * 0.6})`);
+                    gradient.addColorStop(1, `rgba(150, 0, 0, ${edgeAlpha})`);
+                    this.ctx.globalAlpha = 0.75;
+                    this.ctx.fillStyle = gradient;
+                    this.ctx.fillRect(0, 0, beamWidth, this.canvas.height);
+                    this.ctx.restore();
+                }
+
                   const blinkState = this.gridBlink;
                   const blinkActive = blinkState && blinkState.activeUntil && timeMs < blinkState.activeUntil;
                   if (blinkActive) {
