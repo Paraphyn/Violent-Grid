@@ -285,8 +285,8 @@ const VECTOR_SNAKE_SETTINGS = Object.freeze({
 
 const FIRST_BOSS_LOCK = Object.freeze({
     // Set enabled to true and bossKey to any valid enemy key (e.g., 'player_2_boss') to lock that boss as the first encounter
-    enabled: true,
-    bossKey: 'vector_snake_boss'
+    enabled: false,
+    bossKey: ''
 });
 
 const BOSS_SELECTION = Object.freeze({
