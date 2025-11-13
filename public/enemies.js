@@ -150,7 +150,7 @@ ENEMY_TYPES['vector_snake_boss'] = {
 
 ENEMY_TYPES['player_2_boss'] = {
     role: 'boss',
-    health: 2000,
+    health: 2200,
     speed: 3.5,
     size: 40,
     points: 950,
@@ -181,7 +181,7 @@ ENEMY_TYPES['player_2_boss'] = {
 
 ENEMY_TYPES['ping_and_pong_boss'] = {
     role: 'boss',
-    health: 4000,
+    health: 3500,
     speed: 0,
     size: 100,
     points: 950,
@@ -194,12 +194,12 @@ ENEMY_TYPES['ping_and_pong_boss'] = {
     bossBaseType: 'ping_and_pong',
     displayName: 'PING & PONG',
     paddleWidth: 30,
-    paddleHeight: 120,
+    paddleHeight: 130,
     paddleGlowColor: 'rgba(255, 32, 32, 0.9)',
     paddleFollowLerp: 0.18,
     paddleDamage: 300,
     ballRadius: 40,
-    ballHealth: 5000,
+    ballHealth: 3500,
     ballBaseSpeed: 6,
     ballSpeedIncrement: 0.5,
     ballMaxSpeed: 14,
@@ -207,17 +207,17 @@ ENEMY_TYPES['ping_and_pong_boss'] = {
     energyWaveIntervalMs: 4000,
     energyWaveRadius: 150,
     energyWaveDamage: 25,
-    extraBallSpawnDelayMs: 10000,
+    extraBallSpawnDelayMs: 8000,
     extraBallHealth: 100,
     extraBallRadius: 26,
-    extraBallSpeed: 7.5,
+    extraBallSpeed: 6,
     extraBallContactDamage: 25,
     extraBallExplosionRadius: 120,
     extraBallExplosionDamage: 25,
-    extraBallMaxBounces: 8,
-    maxExtraBalls: 4,
+    extraBallMaxBounces: 10,
+    maxExtraBalls: 3,
     barrierInset: 56,
-    bossRotationEnabled: false
+    bossRotationEnabled: true
 };
 
 // Boss: Tetris Cross (cross made of squares)
@@ -286,7 +286,7 @@ const VECTOR_SNAKE_SETTINGS = Object.freeze({
 const FIRST_BOSS_LOCK = Object.freeze({
     // Set enabled to true and bossKey to any valid enemy key (e.g., 'player_2_boss') to lock that boss as the first encounter
     enabled: true,
-    bossKey: 'ping_and_pong_boss'
+    bossKey: 'vector_snake_boss'
 });
 
 const BOSS_SELECTION = Object.freeze({
