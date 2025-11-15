@@ -183,7 +183,7 @@
             max-height: 400px;
             width: auto;
             height: auto;
-            filter: drop-shadow(0 0 20px #ff2d2d) drop-shadow(0 0 40px rgba(255, 45, 45, 0.65));
+            filter: drop-shadow(0 0 20px rgba(255, 45, 45, 0.5)) drop-shadow(0 0 40px rgba(255, 45, 45, 0.325));
             animation: logoGlow 2s ease-in-out infinite alternate;
             display: block;
             margin-bottom: 50px;
@@ -229,10 +229,10 @@
         
         @keyframes logoGlow {
             from {
-                filter: drop-shadow(0 0 20px #ff2d2d) drop-shadow(0 0 40px rgba(255, 45, 45, 0.65));
+                filter: drop-shadow(0 0 20px rgba(255, 45, 45, 0.5)) drop-shadow(0 0 40px rgba(255, 45, 45, 0.325));
             }
             to {
-                filter: drop-shadow(0 0 30px #ff4646) drop-shadow(0 0 60px rgba(255, 70, 70, 0.75)) drop-shadow(0 0 80px rgba(255, 80, 80, 0.55));
+                filter: drop-shadow(0 0 30px rgba(255, 70, 70, 0.5)) drop-shadow(0 0 60px rgba(255, 70, 70, 0.375)) drop-shadow(0 0 80px rgba(255, 80, 80, 0.275));
             }
         }
         
@@ -315,7 +315,7 @@
             gap: var(--theme-title-gap, 10px);
         }
         .theme-label {
-            color: #ffffff;
+            color: #ff4d4d;
             font-size: 12px;
             letter-spacing: 2px;
             opacity: 0.9;
@@ -466,19 +466,19 @@
             height: 32px;
             border-radius: 50%;
             border: 2px solid #ffffff;
-            color: #ff4d4d;
+            color: #ffffff;
             font-family: Roboto, sans-serif;
             font-weight: 700;
             font-size: 20px;
             letter-spacing: 1px;
-            background: rgba(0, 0, 0, 0.45);
+            background: #ff2d2d;
             box-shadow: 0 0 12px rgba(255, 77, 77, 0.45);
             transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
         }
 
         .tutorial-button:hover .tutorial-button-icon,
         .tutorial-button:focus-visible .tutorial-button-icon {
-            background: rgba(255, 77, 77, 0.12);
+            background: #ff4444;
             box-shadow: 0 0 18px rgba(255, 77, 77, 0.65);
         }
 
