@@ -8706,6 +8706,9 @@
                     this.player.spawnElapsedFrames = 0;
                 }
                 this.player.stopRailgunCharge(this.audio);
+                if (this.audio && typeof this.audio.playSound === 'function') {
+                    this.audio.playSound('PlayerFirstSpawn');
+                }
             }
 
             setupEventListeners() {

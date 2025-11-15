@@ -26,6 +26,7 @@
             RocketExplotion: { file: 'rocket-explosion.wav', loop: false },
             RocketReload: { file: 'rocket-reload.wav', loop: false },
             mine_placed: { file: 'mine-placed.wav', loop: false },
+            PlayerFirstSpawn: { file: 'player-first-spawn.wav', loop: false },
             enemyHit: { file: 'enemy-hit.wav', loop: false },
             enemyDash: { file: 'enemy-dash.wav', loop: false },
             enemyShoot: { file: 'enemy-shoot.wav', loop: false },
