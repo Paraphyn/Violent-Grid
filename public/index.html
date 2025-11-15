@@ -365,9 +365,24 @@
         .theme-option.locked { cursor: not-allowed; opacity: 0.75; }
         .theme-option.locked .circle { background: #000000 !important; border-color: #333333 !important; box-shadow: none !important; animation: none !important; }
         .theme-option.locked .theme-name { color: #777777 !important; }
-        .theme-default { background: #ffffff; border-color: #ffffff; }
-        .theme-cyan { background: #00ffff; border-color: #00ffff; box-shadow: 0 0 10px rgba(0,255,255,0.8), 0 0 18px rgba(0,255,255,0.5); }
-        .theme-rainbow { background: conic-gradient(from 0deg, red, orange, yellow, green, cyan, blue, violet, red); border-color: #ffffff; animation: rainbowHue 8s linear infinite; }
+        .theme-default {
+            background: #ffffff;
+            border: 2px solid transparent;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.9), 0 0 18px rgba(255, 255, 255, 0.55);
+        }
+        .theme-cyan {
+            background: #00ffff;
+            border: 2px solid rgba(0, 255, 255, 0.9);
+            border-radius: 0;
+            clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+            box-shadow: 0 0 10px rgba(0,255,255,0.8), 0 0 18px rgba(0,255,255,0.5);
+        }
+        .theme-rainbow {
+            background: conic-gradient(from 0deg, red, orange, yellow, green, cyan, blue, violet, red);
+            border: 2px solid rgba(255, 255, 255, 0.7);
+            border-radius: 6px;
+            animation: rainbowHue 8s linear infinite;
+        }
         @keyframes rainbowHue {
             from { filter: hue-rotate(0deg); }
             to { filter: hue-rotate(360deg); }
@@ -1534,20 +1549,29 @@
                     ctx.stroke();
                 } else {
                     // Apply theme visuals
-                    let strokeStyle = '#cccccc';
-                    ctx.lineWidth = 2;
+                    const drawDiamond = () => {
+                        ctx.beginPath();
+                        ctx.moveTo(this.x, this.y - this.radius);
+                        ctx.lineTo(this.x + this.radius, this.y);
+                        ctx.lineTo(this.x, this.y + this.radius);
+                        ctx.lineTo(this.x - this.radius, this.y);
+                        ctx.closePath();
+                    };
+                    const drawSquare = () => {
+                        ctx.beginPath();
+                        ctx.rect(this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+                    };
                     if (this.theme === 'cyan') {
                         ctx.save();
-                        ctx.beginPath();
-                        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                         ctx.shadowColor = '#00ffff';
-                        ctx.shadowBlur = 18;
-                        ctx.fillStyle = '#00ffff';
+                        ctx.shadowBlur = 22;
+                        drawDiamond();
+                        ctx.fillStyle = '#00faff';
                         ctx.fill();
-                        ctx.restore();
-                        strokeStyle = '#00cccc';
-                        ctx.strokeStyle = strokeStyle;
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = '#00b0d4';
                         ctx.stroke();
+                        ctx.restore();
                     } else if (this.theme === 'rainbow') {
                         const r = this.radius;
                         const grad = ctx.createLinearGradient(this.x - r, this.y - r, this.x + r, this.y + r);
@@ -1563,20 +1587,24 @@
                         addStop(0.66);
                         addStop(0.83);
                         addStop(1.0);
-                        ctx.beginPath();
-                        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                        ctx.save();
+                        drawSquare();
                         ctx.fillStyle = grad;
                         ctx.fill();
-                        ctx.strokeStyle = '#ffffff88';
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = '#ffffffaa';
                         ctx.stroke();
+                        ctx.restore();
                     } else {
                         // default
+                        ctx.save();
                         ctx.beginPath();
                         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                        ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+                        ctx.shadowBlur = 18;
                         ctx.fillStyle = '#ffffff';
                         ctx.fill();
-                        ctx.strokeStyle = '#cccccc';
-                        ctx.stroke();
+                        ctx.restore();
                     }
                 }
 
