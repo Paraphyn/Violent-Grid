@@ -1433,9 +1433,9 @@
 
         // Theme-aware spawn effect colors
         const PLAYER_SPAWN_THEME_COLORS = Object.freeze({
-            default: { beam: 'rgba(255, 255, 255, 0.9)', ring: '#ff4da6', particles: '#ffd9ff' },
-            cyan: { beam: 'rgba(0, 255, 255, 0.85)', ring: '#00d4ff', particles: '#b4f7ff' },
-            rainbow: { beam: 'rgba(255, 255, 255, 0.95)', ring: '#ff8bff', particles: '#ffe066' }
+            default: { ring: '#ffffff' },
+            cyan: { ring: '#00e5ff' },
+            rainbow: { ring: '#ffffff' } // Rainbow handled separately, fallback to white
         });
         const PLAYER_SPAWN_DEFAULT_DURATION = 90;
 
@@ -1502,63 +1502,48 @@
             _drawSpawnEffect(ctx, renderRadius) {
                 if (!ctx || !this.isSpawning) return;
                 const progress = this.getSpawnProgress();
-                const themeKey = (this.spawnEffectTheme === 'cyan' || this.spawnEffectTheme === 'rainbow') ? this.spawnEffectTheme : 'default';
+                const themeKey = (this.spawnEffectTheme === 'cyan' || this.spawnEffectTheme === 'rainbow')
+                    ? this.spawnEffectTheme
+                    : 'default';
                 const colors = PLAYER_SPAWN_THEME_COLORS[themeKey] || PLAYER_SPAWN_THEME_COLORS.default;
-                const beamHalfHeight = Math.max(renderRadius * 6, (this.canvas ? this.canvas.height : renderRadius * 12) * 0.3);
-                const beamWidth = renderRadius * (1.2 + (1 - progress) * 0.6);
-                ctx.save();
-                ctx.globalCompositeOperation = 'lighter';
-                ctx.globalAlpha = 0.45 + 0.35 * Math.sin(progress * Math.PI);
-                const beamGradient = ctx.createLinearGradient(this.x, this.y - beamHalfHeight, this.x, this.y + beamHalfHeight);
-                beamGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
-                beamGradient.addColorStop(0.5, colors.beam);
-                beamGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-                ctx.fillStyle = beamGradient;
-                ctx.fillRect(this.x - beamWidth / 2, this.y - beamHalfHeight, beamWidth, beamHalfHeight * 2);
-                ctx.restore();
 
                 ctx.save();
                 ctx.globalCompositeOperation = 'lighter';
-                for (let i = 0; i < 3; i++) {
-                    const ringBase = progress * 1.2 - i * 0.25;
+                const ringCount = 4;
+                for (let i = 0; i < ringCount; i++) {
+                    const phaseOffset = i * 0.2;
+                    const ringBase = progress * 1.25 - phaseOffset;
                     if (ringBase <= 0) continue;
                     const ringProgress = Math.min(1, ringBase);
-                    const radius = renderRadius * (1.2 + ringProgress * (2.0 + i * 0.4));
-                    const alpha = Math.max(0, 0.4 - ringProgress * 0.25);
+                    const radius = renderRadius * (1.1 + ringProgress * (2.4 + i * 0.35));
+                    const alpha = Math.max(0, 0.65 - ringProgress * 0.5);
                     if (alpha <= 0.01) continue;
+
                     ctx.save();
                     ctx.globalAlpha = alpha;
-                    ctx.lineWidth = 2 + (1 - ringProgress) * 4;
+                    ctx.lineWidth = 2 + (1 - ringProgress) * 3.5;
                     if (themeKey === 'rainbow') {
-                        const ringGradient = ctx.createLinearGradient(this.x - radius, this.y - radius, this.x + radius, this.y + radius);
-                        const hueBase = (progress * 360) % 360;
+                        const ringGradient = ctx.createLinearGradient(
+                            this.x - radius,
+                            this.y - radius,
+                            this.x + radius,
+                            this.y + radius
+                        );
+                        const hueBase = (progress * 360 + i * 45) % 360;
                         ringGradient.addColorStop(0, `hsl(${(hueBase + 0) % 360}, 90%, 65%)`);
                         ringGradient.addColorStop(0.5, `hsl(${(hueBase + 120) % 360}, 90%, 65%)`);
                         ringGradient.addColorStop(1, `hsl(${(hueBase + 240) % 360}, 90%, 65%)`);
                         ctx.strokeStyle = ringGradient;
+                        ctx.shadowColor = `hsla(${hueBase}, 100%, 70%, 0.9)`;
                     } else {
                         ctx.strokeStyle = colors.ring;
+                        ctx.shadowColor = colors.ring;
                     }
+                    ctx.shadowBlur = 18;
                     ctx.beginPath();
                     ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
                     ctx.stroke();
                     ctx.restore();
-                }
-                ctx.restore();
-
-                ctx.save();
-                ctx.globalAlpha = 0.35 + 0.25 * (1 - progress);
-                ctx.fillStyle = colors.particles;
-                const particleCount = 10;
-                for (let i = 0; i < particleCount; i++) {
-                    const angle = (i / particleCount) * Math.PI * 2 + progress * Math.PI;
-                    const distance = renderRadius * (1.4 + progress * 1.6);
-                    const px = this.x + Math.cos(angle) * distance;
-                    const py = this.y + Math.sin(angle) * distance;
-                    const size = 2 + (1 - progress) * 3;
-                    ctx.beginPath();
-                    ctx.arc(px, py, size, 0, Math.PI * 2);
-                    ctx.fill();
                 }
                 ctx.restore();
             }
@@ -1738,7 +1723,7 @@
                 const renderRadius = this.radius * themeRadiusMultiplier;
                 const spawnActive = this.isSpawning;
                 const spawnProgress = this.getSpawnProgress();
-                const spawnAlpha = spawnActive ? Math.max(0.15, spawnProgress) : 1;
+                const spawnAlpha = spawnActive ? Math.max(0, Math.min(1, spawnProgress)) : 1;
                 if (spawnActive) {
                     this._drawSpawnEffect(ctx, renderRadius);
                 }
