@@ -7461,6 +7461,13 @@
                         this.playerTheme = savedTheme;
                     }
                 } catch (e) { /* ignore storage errors */ }
+                this.gameOverCharacterAssets = {
+                    default: { src: 'GameOver_cry_character_1.png', alt: 'Default theme defeat artwork' },
+                    cyan: { src: 'GameOver_cry_character_2.png', alt: 'Cyan theme defeat artwork' },
+                    rainbow: { src: 'GameOver_cry_character_3.png', alt: 'Rainbow theme defeat artwork' }
+                };
+                this.gameOverCharacterImages = {};
+                this.preloadGameOverCharacterImages();
                 this.controlsInfoAutoHideDelay = 20000;
                 this.controlsInfoAutoHideTriggered = false;
                 this.reset();
@@ -7698,6 +7705,29 @@
                 }
             }
 
+            resolveThemeKey(theme) {
+                return (theme === 'cyan' || theme === 'rainbow') ? theme : 'default';
+            }
+
+            preloadGameOverCharacterImages() {
+                if (!this.gameOverCharacterAssets || typeof Image === 'undefined') {
+                    return;
+                }
+                this.gameOverCharacterImages = this.gameOverCharacterImages || {};
+                Object.entries(this.gameOverCharacterAssets).forEach(([key, asset]) => {
+                    if (!asset || !asset.src) return;
+                    const img = new Image();
+                    img.src = asset.src;
+                    this.gameOverCharacterImages[key] = img;
+                });
+            }
+
+            getGameOverCharacterImage(theme) {
+                if (!this.gameOverCharacterImages) return null;
+                const key = this.resolveThemeKey(theme);
+                return this.gameOverCharacterImages[key] || null;
+            }
+
             setupCanvas() {
                 // Fixed internal resolution; uniform CSS scale to preserve aspect ratio (letterbox)
                 const baseW = SPEED_SETTINGS.baseWidth;
@@ -7818,12 +7848,9 @@
                     cyan: { src: 'Character_2_lobby.png', alt: 'Cyan theme lobby character' },
                     rainbow: { src: 'Character_3_lobby.png', alt: 'Square Tom theme lobby character' }
                 };
-                const resolveThemeKey = (theme) => {
-                    return (theme === 'cyan' || theme === 'rainbow') ? theme : 'default';
-                };
                 const updateLobbyCharacterImage = (theme) => {
                     if (!lobbyCharacterImage) return;
-                    const key = resolveThemeKey(theme);
+                    const key = (typeof this.resolveThemeKey === 'function') ? this.resolveThemeKey(theme) : 'default';
                     const asset = LOBBY_THEME_IMAGES[key] || LOBBY_THEME_IMAGES.default;
                     if (!asset) return;
                     if (lobbyCharacterImage.getAttribute('src') !== asset.src) {
@@ -10302,18 +10329,21 @@
                     if (this.gameOverRain) {
                         this.gameOverRain.draw(this.ctx);
                     }
+                    const centerX = this.canvas.width / 2;
+                    const lineHeight = 40;
+                    const gameOverVerticalShift = 200;
+                    const titleBaseY = this.canvas.height / 2 - 60;
+                    const titleY = titleBaseY - gameOverVerticalShift;
+
                     this.ctx.fillStyle = '#ff4444';
                     this.ctx.font = '48px Roboto';
                     this.ctx.textAlign = 'center';
-                    this.ctx.fillText('BREACH FAILED', this.canvas.width / 2, this.canvas.height / 2 - 60);
+                    this.ctx.fillText('BREACH FAILED', centerX, titleY);
                     this.ctx.fillStyle = '#ffffff';
                     this.ctx.font = '28px Roboto';
                                         // Center the stats block vertically with equal spacing
-                    const centerX = this.canvas.width / 2;
-                    const lineHeight = 40;
-                    const gameOverY = this.canvas.height / 2 - 60;
-                    const minTopY = gameOverY + 50;
-                    const idealTopY = this.canvas.height / 2 - 2 * lineHeight;
+                    const minTopY = titleY + 50;
+                    const idealTopY = (this.canvas.height / 2 - 2 * lineHeight) - gameOverVerticalShift;
                     const statsStartY = Math.max(minTopY, idealTopY);
 
                     const survivalTimeText = `Survival Time: ${this.formatTime(this.getEffectiveElapsedTime(this.gameOverTime))}`;
@@ -10327,6 +10357,8 @@
                     this.ctx.fillText(survivedWavesText, centerX, statsStartY + 2 * lineHeight);
                     this.ctx.fillText(bestScoreText, centerX, statsStartY + 3 * lineHeight);
                     this.ctx.fillText(bestWaveText, centerX, statsStartY + 4 * lineHeight);
+
+                    const statsBottomY = statsStartY + 4 * lineHeight;
 
                     if (this.isNewBestScore) {
                         const w = this.ctx.measureText(bestScoreText).width;
@@ -10347,7 +10379,26 @@
                         this.ctx.restore();
                     }
 
-                    
+                    const gameOverImage = this.getGameOverCharacterImage(this.playerTheme);
+                    let instructionsStartY = this.canvas.height / 2 + 200;
+                    if (gameOverImage && gameOverImage.complete && gameOverImage.naturalWidth > 0) {
+                        const maxWidth = Math.min(420, this.canvas.width * 0.35);
+                        const drawWidth = Math.max(120, maxWidth);
+                        const aspectRatio = (gameOverImage.naturalWidth > 0 && gameOverImage.naturalHeight > 0)
+                            ? (gameOverImage.naturalHeight / gameOverImage.naturalWidth)
+                            : 1;
+                        const drawHeight = drawWidth * aspectRatio;
+                        const imageCenterY = statsBottomY + 60 + drawHeight / 2;
+                        this.ctx.drawImage(
+                            gameOverImage,
+                            centerX - drawWidth / 2,
+                            imageCenterY - drawHeight / 2,
+                            drawWidth,
+                            drawHeight
+                        );
+                        instructionsStartY = imageCenterY + drawHeight / 2 + 80;
+                    }
+
                     // Fast blinking restart text with fade (slowed 2x: 180 frames = 3 seconds at 60fps)
                     const blinkCycle = this.gameOverBlinkFrame % 180;
                     let opacity;
@@ -10364,8 +10415,8 @@
                     this.ctx.globalAlpha = opacity;
                     this.ctx.fillStyle = '#ffffff';
                     this.ctx.font = '20px Roboto';
-                    this.ctx.fillText('Press SPACE to restart', this.canvas.width / 2, this.canvas.height / 2 + 200);
-                    this.ctx.fillText('Press ESC to return to lobby', this.canvas.width / 2, this.canvas.height / 2 + 230);
+                    this.ctx.fillText('Press SPACE to restart', centerX, instructionsStartY);
+                    this.ctx.fillText('Press ESC to return to lobby', centerX, instructionsStartY + 30);
                     this.ctx.restore();
                 }
             }
