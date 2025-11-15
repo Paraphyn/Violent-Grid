@@ -177,7 +177,7 @@
             max-height: 400px;
             width: auto;
             height: auto;
-            filter: drop-shadow(0 0 20px #00ffff) drop-shadow(0 0 40px #00ffff);
+            filter: drop-shadow(0 0 20px #ff2d2d) drop-shadow(0 0 40px rgba(255, 45, 45, 0.65));
             animation: logoGlow 2s ease-in-out infinite alternate;
             display: block;
             margin-bottom: 50px;
@@ -190,11 +190,11 @@
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
-            color: #00ffff;
+            color: #ff4d4d;
             font-size: 18px;
             opacity: 0.8;
             pointer-events: none;
-            text-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
+            text-shadow: 0 0 10px rgba(255, 60, 60, 0.4);
         }
         
         /* DEV: Wipe local data button (visible only in lobby) */
@@ -223,10 +223,10 @@
         
         @keyframes logoGlow {
             from {
-                filter: drop-shadow(0 0 20px #00ffff) drop-shadow(0 0 40px #00ffff);
+                filter: drop-shadow(0 0 20px #ff2d2d) drop-shadow(0 0 40px rgba(255, 45, 45, 0.65));
             }
             to {
-                filter: drop-shadow(0 0 30px #00ffff) drop-shadow(0 0 60px #00ffff) drop-shadow(0 0 80px #00ffff);
+                filter: drop-shadow(0 0 30px #ff4646) drop-shadow(0 0 60px rgba(255, 70, 70, 0.75)) drop-shadow(0 0 80px rgba(255, 80, 80, 0.55));
             }
         }
         
@@ -245,7 +245,7 @@
             font-weight: bold;
             color: #ffffff;
             background: transparent;
-            border: 3px solid #00ffff;
+            border: 3px solid #ff3b3b;
             border-radius: 0;
             cursor: pointer;
             transition: all 0.3s ease;
@@ -256,8 +256,8 @@
         }
         
         .start-button:hover {
-            color: #00ffff;
-            border-color: #ffffff;
+            color: #ff5a5a;
+            border-color: #ff5a5a;
         }
         
         .start-button .button-rain {
@@ -460,20 +460,20 @@
             height: 32px;
             border-radius: 50%;
             border: 2px solid #ffffff;
-            color: #00e5ff;
+            color: #ff4d4d;
             font-family: Roboto, sans-serif;
             font-weight: 700;
             font-size: 20px;
             letter-spacing: 1px;
             background: rgba(0, 0, 0, 0.45);
-            box-shadow: 0 0 12px rgba(0, 229, 255, 0.45);
+            box-shadow: 0 0 12px rgba(255, 77, 77, 0.45);
             transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
         }
 
         .tutorial-button:hover .tutorial-button-icon,
         .tutorial-button:focus-visible .tutorial-button-icon {
-            background: rgba(0, 229, 255, 0.1);
-            box-shadow: 0 0 18px rgba(0, 229, 255, 0.65);
+            background: rgba(255, 77, 77, 0.12);
+            box-shadow: 0 0 18px rgba(255, 77, 77, 0.65);
         }
 
         .tutorial-overlay {
@@ -499,7 +499,7 @@
             max-width: 640px;
             width: calc(100% - 64px);
             background: #000000;
-            border: 2px solid #00e5ff;
+            border: 2px solid #ff4d4d;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
             padding: 40px 48px 36px;
             font-family: Roboto, sans-serif;
@@ -535,7 +535,7 @@
         }
 
         .tutorial-close:focus-visible {
-            outline: 2px solid #00e5ff;
+            outline: 2px solid #ff4d4d;
             outline-offset: 3px;
         }
 
@@ -547,7 +547,7 @@
         }
 
         .tutorial-description {
-            color: #00e5ff;
+            color: #ff4d4d;
             font-size: 16px;
             line-height: 1.6;
         }
@@ -815,7 +815,7 @@
                     ? this.options.digits.map(d => String(d))
                     : ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
                 this.digitChangeMode = this.options.digitChangeMode === 'random' ? 'random' : 'increment';
-                this.color = this.options.color || '#00ffff';
+                this.color = this.options.color || '#ff3b3b';
                 this.fontFamily = this.options.fontFamily || 'monospace';
 
                 this.digitIndex = Math.floor(Math.random() * this.digits.length);
@@ -10026,7 +10026,7 @@
                 if (this.inLobby) {
                     // Draw falling numbers background and radial lines in lobby (below UI)
                     this.fallingNumbers.draw(this.ctx);
-                    // Radial lines: cyan, rotating slowly around logo center
+                    // Radial lines: red, rotating slowly around logo center
                     const cx = this.lobbyRadialCenterX, cy = this.lobbyRadialCenterY;
                     const time = Date.now();
                     const angle = (time % 120000) / 120000 * Math.PI * 2; // slower rotation: 120s per full turn
@@ -10035,7 +10035,7 @@
                     const innerR = this.lobbyRadial.innerR, outerR = this.lobbyRadialOuterR;
                     this.ctx.save();
                     this.ctx.translate(cx, cy);
-                    this.ctx.strokeStyle = 'rgba(0,255,255,0.2)';
+                    this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.25)';
                     this.ctx.lineWidth = 1;
                     this.ctx.beginPath();
                     for (let i = 0; i < dirs.length; i++) {
