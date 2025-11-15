@@ -258,7 +258,7 @@
             }
         }
         
-        @keyframes startButtonPulse {
+        @keyframes ButtonPulse {
             0% {
                 box-shadow:
                     0 0 6px rgba(255, 59, 59, 0.45),
@@ -279,7 +279,7 @@
             }
         }
         
-        .start-button {
+        .-button {
             padding: 12px 80px;
             font-size: 12px;
             font-weight: bold;
@@ -293,15 +293,15 @@
             letter-spacing: 2px;
             position: relative;
             overflow: hidden;
-            animation: startButtonPulse 4s ease-in-out infinite;
+            animation: ButtonPulse 4s ease-in-out infinite;
         }
         
-        .start-button:hover {
+        .-button:hover {
             color: #ff5a5a;
             border-color: #ff5a5a;
         }
         
-        .start-button .button-rain {
+        .-button .button-rain {
             position: absolute;
             top: 100%;
             left: 0;
@@ -311,7 +311,7 @@
             pointer-events: none;
         }
         
-        .start-button:hover .button-rain {
+        .-button:hover .button-rain {
             height: 60px;
         }
         
@@ -334,7 +334,7 @@
             }
         }
         
-        .start-button:active {
+        .-button:active {
             transform: scale(0.98);
         }
         
@@ -750,8 +750,8 @@
             <span class="tutorial-button-icon">?</span>
         </button>
         <img class="lobby-logo" id="lobbyLogo" src="game-logo.png" alt="GEOMETRY RUSH" />
-        <button class="start-button" id="startButton" style="margin-top: 24px;">
-            START
+        <button class="-button" id="Button" style="margin-top: 24px;">
+            TRY TO BREACH
             <div class="button-rain" id="buttonRain"></div>
         </button>
         <!-- Theme selector: centered by X under Start -->
