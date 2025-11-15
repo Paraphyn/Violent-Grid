@@ -33,73 +33,33 @@
             z-index: 90;
             visibility: hidden;
             opacity: 0;
-            transform: scale(0.97);
+            transform: scale(0.5);
             transform-origin: center;
-            transition: opacity 0.35s ease, transform 0.65s cubic-bezier(0.4, 0, 0.2, 1);
-            --danger-frame-padding: clamp(12px, 2.4vw, 38px);
-            --danger-corner-size: clamp(120px, 22vmin, 360px);
-            --danger-corner-thickness: clamp(4px, 0.8vmin, 7px);
-            --danger-corner-color: rgba(255, 80, 80, 0.95);
-            --danger-corner-fade: rgba(255, 80, 80, 0);
+            background: radial-gradient(circle at center, rgba(0, 0, 0, 0) 55%, rgba(255, 60, 60, 0.084) 72%, rgba(180, 0, 0, 0.21) 100%);
+            box-shadow: inset 0 0 80px rgba(255, 40, 40, 0.245), inset 0 0 220px rgba(140, 0, 0, 0.14);
         }
 
         .danger-frame.active {
             visibility: visible;
-            opacity: 1;
-            transform: scale(1);
-        }
-
-        .danger-frame::before,
-        .danger-frame::after {
-            content: '';
-            position: absolute;
-            pointer-events: none;
-        }
-
-        .danger-frame::before {
-            inset: var(--danger-frame-padding);
-            border-radius: clamp(14px, 3vw, 32px);
-            background:
-                linear-gradient(90deg, var(--danger-corner-color), var(--danger-corner-fade)) top left / var(--danger-corner-size) var(--danger-corner-thickness) no-repeat,
-                linear-gradient(180deg, var(--danger-corner-color), var(--danger-corner-fade)) top left / var(--danger-corner-thickness) var(--danger-corner-size) no-repeat,
-                linear-gradient(270deg, var(--danger-corner-color), var(--danger-corner-fade)) top right / var(--danger-corner-size) var(--danger-corner-thickness) no-repeat,
-                linear-gradient(180deg, var(--danger-corner-color), var(--danger-corner-fade)) top right / var(--danger-corner-thickness) var(--danger-corner-size) no-repeat,
-                linear-gradient(90deg, var(--danger-corner-color), var(--danger-corner-fade)) bottom left / var(--danger-corner-size) var(--danger-corner-thickness) no-repeat,
-                linear-gradient(0deg, var(--danger-corner-color), var(--danger-corner-fade)) bottom left / var(--danger-corner-thickness) var(--danger-corner-size) no-repeat,
-                linear-gradient(270deg, var(--danger-corner-color), var(--danger-corner-fade)) bottom right / var(--danger-corner-size) var(--danger-corner-thickness) no-repeat,
-                linear-gradient(0deg, var(--danger-corner-color), var(--danger-corner-fade)) bottom right / var(--danger-corner-thickness) var(--danger-corner-size) no-repeat;
-            filter: drop-shadow(0 0 14px rgba(255, 40, 40, 0.55));
-            opacity: 0.85;
-        }
-
-        .danger-frame.active::before {
             animation: dangerFramePulse 6s ease-in-out infinite;
         }
 
-        .danger-frame::after {
-            inset: 0;
-            background:
-                radial-gradient(circle at top left, rgba(255, 60, 60, 0.25), transparent 60%),
-                radial-gradient(circle at top right, rgba(255, 60, 60, 0.25), transparent 60%),
-                radial-gradient(circle at bottom left, rgba(255, 60, 60, 0.25), transparent 60%),
-                radial-gradient(circle at bottom right, rgba(255, 60, 60, 0.25), transparent 60%);
-            opacity: 0.35;
-            filter: blur(18px);
+        .danger-frame::before {
+            content: '';
+            position: absolute;
+            inset: clamp(10px, 2vw, 28px);
+            border-radius: 12px;
+            border: 2px solid rgba(255, 80, 80, 0.245);
+            box-shadow:
+                0 0 28px rgba(255, 70, 70, 0.28),
+                0 0 80px rgba(180, 0, 0, 0.245),
+                inset 0 0 35px rgba(255, 70, 70, 0.175);
         }
 
         @keyframes dangerFramePulse {
-            0% {
-                opacity: 0.75;
-                filter: drop-shadow(0 0 14px rgba(255, 40, 40, 0.45));
-            }
-            50% {
-                opacity: 1;
-                filter: drop-shadow(0 0 26px rgba(255, 40, 40, 0.65));
-            }
-            100% {
-                opacity: 0.75;
-                filter: drop-shadow(0 0 14px rgba(255, 40, 40, 0.45));
-            }
+            0% { opacity: 0.525; }
+            50% { opacity: 0.7; }
+            100% { opacity: 0.525; }
         }
         
         .ui {
