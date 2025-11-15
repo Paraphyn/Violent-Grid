@@ -7509,13 +7509,6 @@
                 // Helpers for UI-to-canvas mapping
                 // Cache boss-safe Y derived from XP bar on resize
                 this._cachedBossSafeMinCenterY = 120;
-                this.screenToCanvasY = (screenY) => {
-                    const rect = this.canvas.getBoundingClientRect();
-                    return (screenY - rect.top) * (this.canvas.height / rect.height);
-                };
-                this.getBossSafeMinCenterY = () => {
-                    return this._cachedBossSafeMinCenterY;
-                };
             }
 
             // Boss management
@@ -8644,6 +8637,17 @@
 
                 window.addEventListener('blur', () => this.input.clear());
                 window.addEventListener('focus', () => this.input.clear());
+            }
+            
+            screenToCanvasY(screenY) {
+                if (!this.canvas) return screenY;
+                const rect = this.canvas.getBoundingClientRect();
+                if (!rect || rect.height === 0) return screenY;
+                return (screenY - rect.top) * (this.canvas.height / rect.height);
+            }
+
+            getBossSafeMinCenterY() {
+                return this._cachedBossSafeMinCenterY;
             }
 
             enterPause() {
