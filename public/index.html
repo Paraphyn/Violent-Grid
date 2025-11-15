@@ -202,6 +202,19 @@
             pointer-events: none;
             text-shadow: 0 0 10px rgba(255, 60, 60, 0.4);
         }
+          
+          .lobby-character {
+              position: absolute;
+              bottom: 0;
+              right: 200px;
+              width: clamp(200px, 24vw, 420px);
+              height: auto;
+              pointer-events: none;
+              user-select: none;
+              z-index: 205;
+              filter: drop-shadow(0 0 25px rgba(0, 0, 0, 0.65));
+              transition: opacity 0.2s ease, transform 0.2s ease;
+          }
         
         /* DEV: Wipe local data button (visible only in lobby) */
         .wipe-button {
@@ -733,8 +746,14 @@
                 </div>
             </div>
             
-        </div>
-        <div class="lobby-best" id="bestStats">Best Score: 0 / Max Wave: 0</div>
+          </div>
+          <img
+              class="lobby-character"
+              id="lobbyCharacter"
+              src="Character_1_lobby.png"
+              alt="Lobby character preview"
+          />
+          <div class="lobby-best" id="bestStats">Best Score: 0 / Max Wave: 0</div>
         <!-- DEV: Wipe local saved data button (lobby only) -->
         <button class="wipe-button" id="wipeButton" title="Erase local saved data" style="display: none;">Wipe</button>
     </div>
@@ -7722,9 +7741,30 @@
                 const themeOptions = themeSelector ? Array.from(themeSelector.querySelectorAll('.theme-option')) : [];
                 const themeCyanNameEl = document.getElementById('themeCyanName');
                 const themeRainbowNameEl = document.getElementById('themeRainbowName');
-                  const tutorialButton = document.getElementById('tutorialButton');
-                  const tutorialOverlay = document.getElementById('tutorialOverlay');
-                  const tutorialCloseButton = document.getElementById('tutorialCloseButton');
+                const tutorialButton = document.getElementById('tutorialButton');
+                const tutorialOverlay = document.getElementById('tutorialOverlay');
+                const tutorialCloseButton = document.getElementById('tutorialCloseButton');
+                const lobbyCharacterImage = document.getElementById('lobbyCharacter');
+                const LOBBY_THEME_IMAGES = {
+                    default: { src: 'Character_1_lobby.png', alt: 'White theme lobby character' },
+                    cyan: { src: 'Character_2_lobby.png', alt: 'Cyan theme lobby character' },
+                    rainbow: { src: 'Character_3_lobby.png', alt: 'Rainbow theme lobby character' }
+                };
+                const resolveThemeKey = (theme) => {
+                    return (theme === 'cyan' || theme === 'rainbow') ? theme : 'default';
+                };
+                const updateLobbyCharacterImage = (theme) => {
+                    if (!lobbyCharacterImage) return;
+                    const key = resolveThemeKey(theme);
+                    const asset = LOBBY_THEME_IMAGES[key] || LOBBY_THEME_IMAGES.default;
+                    if (!asset) return;
+                    if (lobbyCharacterImage.getAttribute('src') !== asset.src) {
+                        lobbyCharacterImage.src = asset.src;
+                    }
+                    lobbyCharacterImage.alt = asset.alt;
+                    lobbyCharacterImage.dataset.theme = key;
+                };
+                this.updateLobbyCharacterImage = updateLobbyCharacterImage;
                 
                 if (lobbyLogo) {
                     const handleLogoReady = () => {
@@ -7881,6 +7921,7 @@
                     this.playerTheme = 'default';
                     try { localStorage.setItem('geometry_rush_theme', this.playerTheme); } catch (e) {}
                 }
+                updateLobbyCharacterImage(this.playerTheme);
                 // Theme option handlers
                 const applyThemeSelectionUI = () => {
                     themeOptions.forEach(opt => {
@@ -7894,6 +7935,7 @@
                     if (!isThemeUnlocked(theme)) return; // block selecting locked themes
                     this.playerTheme = theme;
                     try { localStorage.setItem('geometry_rush_theme', theme); } catch (e) {}
+                    updateLobbyCharacterImage(theme);
                     applyThemeSelectionUI();
                     if (this.player) this.player.theme = theme;
                 };
@@ -7913,6 +7955,7 @@
                 // Initialize theme UI from saved theme
                 updateThemeLocksUI();
                 applyThemeSelectionUI();
+                updateLobbyCharacterImage(this.playerTheme);
                 
                 const openTutorial = () => {
                     if (!tutorialOverlay) return;
@@ -8247,6 +8290,9 @@
                         if (themeRainbowNameEl) themeRainbowNameEl.textContent = (best >= 5000) ? 'Rainbow' : '5000 Pts.';
                     }
                 } catch (e) {}
+                if (typeof this.updateLobbyCharacterImage === 'function') {
+                    this.updateLobbyCharacterImage(this.playerTheme || 'default');
+                }
             }
 
             toggleRedBorder(isActive) {
