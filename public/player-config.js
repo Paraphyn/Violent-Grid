@@ -49,6 +49,36 @@
         }
     }
 
+    function preloadUpgradeIcons(upgrades) {
+        if (!Array.isArray(upgrades)) {
+            return;
+        }
+        if (typeof global === 'undefined' || typeof global.Image !== 'function') {
+            return;
+        }
+
+        const cache = global.UPGRADE_ICON_CACHE || Object.create(null);
+        const uniqueSources = new Set();
+
+        upgrades.forEach((upgrade) => {
+            if (upgrade && typeof upgrade.image === 'string' && upgrade.image.length > 0) {
+                uniqueSources.add(upgrade.image);
+            }
+        });
+
+        uniqueSources.forEach((src) => {
+            if (cache[src]) {
+                return;
+            }
+            const img = new global.Image();
+            img.decoding = 'async';
+            img.src = src;
+            cache[src] = img;
+        });
+
+        global.UPGRADE_ICON_CACHE = cache;
+    }
+
     const playerUpgrades = [
         {
             key: 'health_1',
@@ -279,6 +309,8 @@
             }
         }
     ];
+
+    preloadUpgradeIcons(playerUpgrades);
 
     global.XP_LEVELS = xpLevels;
     global.getRequiredXpForLevel = getRequiredXpForLevel;

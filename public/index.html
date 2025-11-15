@@ -10481,6 +10481,7 @@
                 this.currentOptions = [];
                 this.keyHandler = null;
                 this.selectionLocked = false;
+                this.iconCache = (typeof window !== 'undefined' && window.UPGRADE_ICON_CACHE) ? window.UPGRADE_ICON_CACHE : Object.create(null);
             }
 
             getRandomOptions(maxLevel, count = 3) {
@@ -10525,7 +10526,12 @@
                     badge.className = 'upgrade-key-badge';
                     badge.textContent = String(idx + 1);
                     const img = document.createElement('img');
-                    img.src = opt.image;
+                    const cachedIcon = this.iconCache && this.iconCache[opt.image];
+                    if (cachedIcon && cachedIcon.src) {
+                        img.src = cachedIcon.src;
+                    } else {
+                        img.src = opt.image;
+                    }
                     img.alt = opt.title;
                     const title = document.createElement('div');
                     title.className = 'upgrade-title';
