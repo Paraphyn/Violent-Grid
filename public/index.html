@@ -356,6 +356,10 @@
             transform-origin: center center;
             transition: transform 0.2s ease, filter 0.2s ease;
         }
+        .theme-option .circle.theme-cyan {
+            width: 45.6px;
+            height: 45.6px;
+        }
         .theme-option .theme-name {
             margin-top: var(--theme-name-gap, 6px);
             font-size: 11px;
@@ -399,7 +403,7 @@
         .theme-rainbow {
             background: conic-gradient(from 0deg, red, orange, yellow, green, cyan, blue, violet, red);
             border: 2px solid rgba(255, 255, 255, 0.7);
-            border-radius: 6px;
+            border-radius: 0;
             animation: rainbowHue 8s linear infinite;
         }
         @keyframes rainbowHue {
@@ -1546,10 +1550,12 @@
             }
 
 			draw(ctx) {
+                const themeRadiusMultiplier = this.theme === 'cyan' ? 1.2 : 1;
+                const renderRadius = this.radius * themeRadiusMultiplier;
                 // Priority effects override theme
                 if (this.damageFlash > 0) {
                     ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.arc(this.x, this.y, renderRadius, 0, Math.PI * 2);
                     ctx.fillStyle = '#ff0000';
                     ctx.fill();
                     ctx.strokeStyle = '#cc0000';
@@ -1557,7 +1563,7 @@
                     ctx.stroke();
                 } else if (this.healFlash > 0) {
                     ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.arc(this.x, this.y, renderRadius, 0, Math.PI * 2);
                     ctx.fillStyle = '#00ff55';
                     ctx.fill();
                     ctx.strokeStyle = '#00aa44';
@@ -1566,7 +1572,7 @@
                 } else if (this.invulnerable) {
                     // Keep invulnerable visual as before
                     ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.arc(this.x, this.y, renderRadius, 0, Math.PI * 2);
                     ctx.fillStyle = '#f0f0ff';
                     ctx.fill();
                     ctx.strokeStyle = '#a0a0ff';
@@ -1576,15 +1582,15 @@
                     // Apply theme visuals
                     const drawDiamond = () => {
                         ctx.beginPath();
-                        ctx.moveTo(this.x, this.y - this.radius);
-                        ctx.lineTo(this.x + this.radius, this.y);
-                        ctx.lineTo(this.x, this.y + this.radius);
-                        ctx.lineTo(this.x - this.radius, this.y);
+                        ctx.moveTo(this.x, this.y - renderRadius);
+                        ctx.lineTo(this.x + renderRadius, this.y);
+                        ctx.lineTo(this.x, this.y + renderRadius);
+                        ctx.lineTo(this.x - renderRadius, this.y);
                         ctx.closePath();
                     };
                     const drawSquare = () => {
                         ctx.beginPath();
-                        ctx.rect(this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+                        ctx.rect(this.x - renderRadius, this.y - renderRadius, renderRadius * 2, renderRadius * 2);
                     };
                     if (this.theme === 'cyan') {
                         ctx.save();
@@ -1624,7 +1630,7 @@
                         // default
                         ctx.save();
                         ctx.beginPath();
-                        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                        ctx.arc(this.x, this.y, renderRadius, 0, Math.PI * 2);
                         ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
                         ctx.shadowBlur = 18;
                         ctx.fillStyle = '#ffffff';
@@ -1637,16 +1643,16 @@
                 ctx.fillStyle = healthColor;
                 ctx.font = 'bold 20px Roboto';
                 ctx.textAlign = 'center';
-                ctx.fillText(`HP: ${this.health}`, this.x, this.y + this.radius + 22);
+                ctx.fillText(`HP: ${this.health}`, this.x, this.y + renderRadius + 22);
 
                 if (this.railgunCharge > 0 && this.blinkState) {
-                    const w = this.radius * 2;
+                    const w = renderRadius * 2;
                     const h = 4;
                     const isMax = this.railgunCharge >= 0.95;
                     ctx.fillStyle = isMax ? 'rgba(120, 60, 0, 0.7)' : 'rgba(0, 100, 100, 0.7)';
-                    ctx.fillRect(this.x - w/2, this.y - this.radius - 10, w, h);
+                    ctx.fillRect(this.x - w/2, this.y - renderRadius - 10, w, h);
                     ctx.fillStyle = isMax ? 'rgba(255, 165, 0, 0.9)' : 'rgba(0, 255, 255, 0.7)';
-                    ctx.fillRect(this.x - w/2, this.y - this.radius - 10, w * this.railgunCharge, h);
+                    ctx.fillRect(this.x - w/2, this.y - renderRadius - 10, w * this.railgunCharge, h);
                 }
             }
         }
