@@ -10493,102 +10493,154 @@
                     this.ctx.fillText('Press ESC to continue', this.canvas.width / 2, this.canvas.height / 2 + 30);
                     this.ctx.restore();
                 }
-                if (this.gameOver) {
-                    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-                    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-                    if (this.gameOverRain) {
-                        this.gameOverRain.draw(this.ctx);
-                    }
-                    const centerX = this.canvas.width / 2;
-                    const lineHeight = 40;
-                    const gameOverVerticalShift = 200;
-                    const titleBaseY = this.canvas.height / 2 - 60;
-                    const titleY = titleBaseY - gameOverVerticalShift;
+                    if (this.gameOver) {
+                        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
+                        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                        if (this.gameOverRain) {
+                            this.gameOverRain.draw(this.ctx);
+                        }
 
-                    this.ctx.fillStyle = '#ff4444';
-                    this.ctx.font = '48px Roboto';
-                    this.ctx.textAlign = 'center';
-                    this.ctx.fillText('BREACH FAILED', centerX, titleY);
-                    this.ctx.fillStyle = '#ffffff';
-                    this.ctx.font = '28px Roboto';
-                                        // Center the stats block vertically with equal spacing
-                    const minTopY = titleY + 50;
-                    const idealTopY = (this.canvas.height / 2 - 2 * lineHeight) - gameOverVerticalShift;
-                    const statsStartY = Math.max(minTopY, idealTopY);
+                        const centerX = this.canvas.width / 2;
+                        const centerY = this.canvas.height / 2;
 
-                    const survivalTimeText = `Survival Time: ${this.formatTime(this.getEffectiveElapsedTime(this.gameOverTime))}`;
-                    const finalScoreText = `Final Score: ${this.score}`;
-                    const survivedWavesText = `Survived Waves: ${this.currentWave}`;
-                    const bestScoreText = `Best Score: ${this.bestScore}`;
-                    const bestWaveText = `Best Wave: ${this.maxWave}`;
+                        const survivalTimeText = `Survival Time: ${this.formatTime(this.getEffectiveElapsedTime(this.gameOverTime))}`;
+                        const finalScoreText = `Final Score: ${this.score}`;
+                        const survivedWavesText = `Survived Waves: ${this.currentWave}`;
+                        const bestScoreText = `Best Score: ${this.bestScore}`;
+                        const bestWaveText = `Best Wave: ${this.maxWave}`;
+                        const statsTexts = [
+                            survivalTimeText,
+                            finalScoreText,
+                            survivedWavesText,
+                            bestScoreText,
+                            bestWaveText
+                        ];
+                        const instructionTexts = [
+                            'Press SPACE to restart',
+                            'Press ESC to return to lobby'
+                        ];
 
-                    this.ctx.fillText(survivalTimeText, centerX, statsStartY + 0 * lineHeight);
-                    this.ctx.fillText(finalScoreText, centerX, statsStartY + 1 * lineHeight);
-                    this.ctx.fillText(survivedWavesText, centerX, statsStartY + 2 * lineHeight);
-                    this.ctx.fillText(bestScoreText, centerX, statsStartY + 3 * lineHeight);
-                    this.ctx.fillText(bestWaveText, centerX, statsStartY + 4 * lineHeight);
+                        const statsLineHeight = 36;
+                        const instructionsLineHeight = 26;
+                        const titleHeight = 64;
+                        const sectionSpacing = 24;
+                        const instructionsSpacing = 28;
 
-                    const statsBottomY = statsStartY + 4 * lineHeight;
+                        const gameOverImage = this.getGameOverCharacterImage(this.playerTheme);
+                        let hasImage = false;
+                        let drawWidth = 0;
+                        let drawHeight = 0;
 
-                    if (this.isNewBestScore) {
-                        const w = this.ctx.measureText(bestScoreText).width;
+                        if (gameOverImage && gameOverImage.complete && gameOverImage.naturalWidth > 0) {
+                            hasImage = true;
+                            const maxWidth = Math.min(420, this.canvas.width * 0.35);
+                            drawWidth = Math.max(120, maxWidth);
+                            const aspectRatio = (gameOverImage.naturalWidth > 0 && gameOverImage.naturalHeight > 0)
+                                ? (gameOverImage.naturalHeight / gameOverImage.naturalWidth)
+                                : 1;
+                            drawHeight = drawWidth * aspectRatio;
+                        }
+
+                        const statsBlockHeight = statsTexts.length * statsLineHeight;
+                        const instructionsBlockHeight = instructionTexts.length * instructionsLineHeight;
+                        const statsToImageSpacing = hasImage ? 24 : 0;
+                        const imageBlockHeight = hasImage ? statsToImageSpacing + drawHeight : 0;
+                        const totalGroupHeight =
+                            titleHeight +
+                            sectionSpacing +
+                            statsBlockHeight +
+                            imageBlockHeight +
+                            instructionsSpacing +
+                            instructionsBlockHeight;
+
+                        let currentY = centerY - totalGroupHeight / 2;
+
                         this.ctx.save();
-                        this.ctx.textAlign = 'left';
-                        this.ctx.fillStyle = '#00ff00';
-                        this.ctx.font = 'bold 24px Roboto';
-                        this.ctx.fillText('NEW!', centerX + w / 2 + 16, statsStartY + 3 * lineHeight);
+                        this.ctx.textAlign = 'center';
+                        this.ctx.textBaseline = 'middle';
+
+                        // Title
+                        currentY += titleHeight / 2;
+                        this.ctx.fillStyle = '#ff4444';
+                        this.ctx.font = '48px Roboto';
+                        this.ctx.fillText('BREACH FAILED', centerX, currentY);
+                        currentY += titleHeight / 2 + sectionSpacing;
+
+                        // Stats block
+                        this.ctx.fillStyle = '#ffffff';
+                        this.ctx.font = '28px Roboto';
+                        const statsLineCenters = [];
+
+                        statsTexts.forEach((text) => {
+                            currentY += statsLineHeight / 2;
+                            this.ctx.fillText(text, centerX, currentY);
+                            statsLineCenters.push(currentY);
+                            currentY += statsLineHeight / 2;
+                        });
+
+                        let bestScoreWidth = 0;
+                        let bestWaveWidth = 0;
+                        if (this.isNewBestScore) {
+                            bestScoreWidth = this.ctx.measureText(bestScoreText).width;
+                        }
+                        if (this.isNewMaxWave) {
+                            bestWaveWidth = this.ctx.measureText(bestWaveText).width;
+                        }
+
+                        if (this.isNewBestScore || this.isNewMaxWave) {
+                            this.ctx.save();
+                            this.ctx.textAlign = 'left';
+                            this.ctx.fillStyle = '#00ff00';
+                            this.ctx.font = 'bold 24px Roboto';
+                            if (this.isNewBestScore) {
+                                this.ctx.fillText('NEW!', centerX + bestScoreWidth / 2 + 16, statsLineCenters[3]);
+                            }
+                            if (this.isNewMaxWave) {
+                                this.ctx.fillText('NEW!', centerX + bestWaveWidth / 2 + 16, statsLineCenters[4]);
+                            }
+                            this.ctx.restore();
+
+                            this.ctx.textAlign = 'center';
+                            this.ctx.fillStyle = '#ffffff';
+                            this.ctx.font = '28px Roboto';
+                        }
+
+                        if (hasImage) {
+                            currentY += statsToImageSpacing;
+                            this.ctx.drawImage(
+                                gameOverImage,
+                                centerX - drawWidth / 2,
+                                currentY,
+                                drawWidth,
+                                drawHeight
+                            );
+                            currentY += drawHeight;
+                        }
+
+                        currentY += instructionsSpacing;
+
+                        const instructionCenters = [];
+                        instructionTexts.forEach((text) => {
+                            currentY += instructionsLineHeight / 2;
+                            instructionCenters.push({ text, y: currentY });
+                            currentY += instructionsLineHeight / 2;
+                        });
+
+                        // Fast blinking restart text with fade (slowed 2x: 180 frames = 3 seconds at 60fps)
+                        const blinkCycle = this.gameOverBlinkFrame % 180;
+                        const opacity = blinkCycle < 90
+                            ? (blinkCycle / 90)
+                            : ((180 - blinkCycle) / 90);
+
+                        this.ctx.font = '20px Roboto';
+                        this.ctx.save();
+                        this.ctx.globalAlpha = opacity;
+                        instructionCenters.forEach(({ text, y }) => {
+                            this.ctx.fillText(text, centerX, y);
+                        });
+                        this.ctx.restore();
                         this.ctx.restore();
                     }
-                    if (this.isNewMaxWave) {
-                        const w2 = this.ctx.measureText(bestWaveText).width;
-                        this.ctx.save();
-                        this.ctx.textAlign = 'left';
-                        this.ctx.fillStyle = '#00ff00';
-                        this.ctx.font = 'bold 24px Roboto';
-                        this.ctx.fillText('NEW!', centerX + w2 / 2 + 16, statsStartY + 4 * lineHeight);
-                        this.ctx.restore();
-                    }
-
-                    const gameOverImage = this.getGameOverCharacterImage(this.playerTheme);
-                    let instructionsStartY = this.canvas.height / 2 + 200;
-                    if (gameOverImage && gameOverImage.complete && gameOverImage.naturalWidth > 0) {
-                        const maxWidth = Math.min(420, this.canvas.width * 0.35);
-                        const drawWidth = Math.max(120, maxWidth);
-                        const aspectRatio = (gameOverImage.naturalWidth > 0 && gameOverImage.naturalHeight > 0)
-                            ? (gameOverImage.naturalHeight / gameOverImage.naturalWidth)
-                            : 1;
-                        const drawHeight = drawWidth * aspectRatio;
-                        const imageCenterY = statsBottomY + 60 + drawHeight / 2;
-                        this.ctx.drawImage(
-                            gameOverImage,
-                            centerX - drawWidth / 2,
-                            imageCenterY - drawHeight / 2,
-                            drawWidth,
-                            drawHeight
-                        );
-                        instructionsStartY = imageCenterY + drawHeight / 2 + 80;
-                    }
-
-                    // Fast blinking restart text with fade (slowed 2x: 180 frames = 3 seconds at 60fps)
-                    const blinkCycle = this.gameOverBlinkFrame % 180;
-                    let opacity;
-                    
-                    if (blinkCycle < 90) {
-                        // Fade in during first half
-                        opacity = blinkCycle / 90;
-                    } else {
-                        // Fade out during second half
-                        opacity = (180 - blinkCycle) / 90;
-                    }
-                    
-                    this.ctx.save();
-                    this.ctx.globalAlpha = opacity;
-                    this.ctx.fillStyle = '#ffffff';
-                    this.ctx.font = '20px Roboto';
-                    this.ctx.fillText('Press SPACE to restart', centerX, instructionsStartY);
-                    this.ctx.fillText('Press ESC to return to lobby', centerX, instructionsStartY + 30);
-                    this.ctx.restore();
-                }
             }
 
             getEffectiveElapsedTime(nowOverride) {
