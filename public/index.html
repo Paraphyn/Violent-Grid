@@ -1431,6 +1431,14 @@
             }
         }
 
+        // Theme-aware spawn effect colors
+        const PLAYER_SPAWN_THEME_COLORS = Object.freeze({
+            default: { beam: 'rgba(255, 255, 255, 0.9)', ring: '#ff4da6', particles: '#ffd9ff' },
+            cyan: { beam: 'rgba(0, 255, 255, 0.85)', ring: '#00d4ff', particles: '#b4f7ff' },
+            rainbow: { beam: 'rgba(255, 255, 255, 0.95)', ring: '#ff8bff', particles: '#ffe066' }
+        });
+        const PLAYER_SPAWN_DEFAULT_DURATION = 90;
+
         // Player management
         class Player {
             constructor(canvas) {
@@ -1463,10 +1471,100 @@
                 this.explosionAreaMultiplier = 1;
                 // Visual theme for rendering: 'default' | 'cyan' | 'rainbow'
                 this.theme = 'default';
+                // Spawn animation state
+                this.isSpawning = false;
+                this.spawnDurationFrames = PLAYER_SPAWN_DEFAULT_DURATION;
+                this.spawnElapsedFrames = 0;
+                this.spawnEffectTheme = 'default';
+            }
+
+            beginSpawn(durationFrames = PLAYER_SPAWN_DEFAULT_DURATION) {
+                const frames = Math.max(1, Number(durationFrames) || PLAYER_SPAWN_DEFAULT_DURATION);
+                this.isSpawning = true;
+                this.spawnDurationFrames = frames;
+                this.spawnElapsedFrames = 0;
+                this.spawnEffectTheme = this.theme;
+                this.invulnerable = true;
+                this.damageFlash = 0;
+                this.healFlash = 0;
+                this.railgunCharge = 0;
+                this.railgunCharging = false;
+                this.railgunMaxChargeSoundPlayed = false;
+                this.blinkState = true;
+                this.blinkFrame = 0;
+            }
+
+            getSpawnProgress() {
+                if (!this.isSpawning || this.spawnDurationFrames <= 0) return 1;
+                return Math.min(1, Math.max(0, this.spawnElapsedFrames / this.spawnDurationFrames));
+            }
+
+            _drawSpawnEffect(ctx, renderRadius) {
+                if (!ctx || !this.isSpawning) return;
+                const progress = this.getSpawnProgress();
+                const themeKey = (this.spawnEffectTheme === 'cyan' || this.spawnEffectTheme === 'rainbow') ? this.spawnEffectTheme : 'default';
+                const colors = PLAYER_SPAWN_THEME_COLORS[themeKey] || PLAYER_SPAWN_THEME_COLORS.default;
+                const beamHalfHeight = Math.max(renderRadius * 6, (this.canvas ? this.canvas.height : renderRadius * 12) * 0.3);
+                const beamWidth = renderRadius * (1.2 + (1 - progress) * 0.6);
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.globalAlpha = 0.45 + 0.35 * Math.sin(progress * Math.PI);
+                const beamGradient = ctx.createLinearGradient(this.x, this.y - beamHalfHeight, this.x, this.y + beamHalfHeight);
+                beamGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+                beamGradient.addColorStop(0.5, colors.beam);
+                beamGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                ctx.fillStyle = beamGradient;
+                ctx.fillRect(this.x - beamWidth / 2, this.y - beamHalfHeight, beamWidth, beamHalfHeight * 2);
+                ctx.restore();
+
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                for (let i = 0; i < 3; i++) {
+                    const ringBase = progress * 1.2 - i * 0.25;
+                    if (ringBase <= 0) continue;
+                    const ringProgress = Math.min(1, ringBase);
+                    const radius = renderRadius * (1.2 + ringProgress * (2.0 + i * 0.4));
+                    const alpha = Math.max(0, 0.4 - ringProgress * 0.25);
+                    if (alpha <= 0.01) continue;
+                    ctx.save();
+                    ctx.globalAlpha = alpha;
+                    ctx.lineWidth = 2 + (1 - ringProgress) * 4;
+                    if (themeKey === 'rainbow') {
+                        const ringGradient = ctx.createLinearGradient(this.x - radius, this.y - radius, this.x + radius, this.y + radius);
+                        const hueBase = (progress * 360) % 360;
+                        ringGradient.addColorStop(0, `hsl(${(hueBase + 0) % 360}, 90%, 65%)`);
+                        ringGradient.addColorStop(0.5, `hsl(${(hueBase + 120) % 360}, 90%, 65%)`);
+                        ringGradient.addColorStop(1, `hsl(${(hueBase + 240) % 360}, 90%, 65%)`);
+                        ctx.strokeStyle = ringGradient;
+                    } else {
+                        ctx.strokeStyle = colors.ring;
+                    }
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                ctx.restore();
+
+                ctx.save();
+                ctx.globalAlpha = 0.35 + 0.25 * (1 - progress);
+                ctx.fillStyle = colors.particles;
+                const particleCount = 10;
+                for (let i = 0; i < particleCount; i++) {
+                    const angle = (i / particleCount) * Math.PI * 2 + progress * Math.PI;
+                    const distance = renderRadius * (1.4 + progress * 1.6);
+                    const px = this.x + Math.cos(angle) * distance;
+                    const py = this.y + Math.sin(angle) * distance;
+                    const size = 2 + (1 - progress) * 3;
+                    ctx.beginPath();
+                    ctx.arc(px, py, size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
             }
 
             startDash(keys, effects, audio) {
-                if (this.isDashing) return;
+                if (this.isDashing || this.isSpawning) return;
                 let dx = 0, dy = 0;
                 if (keys.w) dy -= 1;
                 if (keys.s) dy += 1;
@@ -1490,7 +1588,7 @@
             }
 
             move(keys, canvas) {
-                if (this.isDashing) return;
+                if (this.isDashing || this.isSpawning) return;
                 const speedMul = this.speedMultiplier || 1;
                 const motion = getMotionScale();
                 let newX = this.x, newY = this.y;
@@ -1535,6 +1633,24 @@
 
             update(input, effects, canvas, audio) {
                 const timeScale = getTimeScale();
+                if (this.isSpawning) {
+                    this.spawnElapsedFrames += timeScale;
+                    if (this.spawnElapsedFrames >= this.spawnDurationFrames) {
+                        this.isSpawning = false;
+                        this.spawnElapsedFrames = this.spawnDurationFrames;
+                        this.invulnerable = false;
+                    } else {
+                        if (this.railgunCharging && audio) {
+                            audio.stopLoopingSound('railgunCharge');
+                            this.railgunCharging = false;
+                        }
+                        if (effects && effects.disableRailgunAura) {
+                            effects.disableRailgunAura();
+                        }
+                        this.railgunCharge = 0;
+                        return;
+                    }
+                }
                 if (this.damageFlash > 0) this.damageFlash -= timeScale;
 				if (this.healFlash > 0) this.healFlash -= timeScale;
                 if (this.invulnerable && this.invulnerabilityTime > 0 && !this.isDashing) {
@@ -1620,6 +1736,15 @@
 			draw(ctx) {
                 const themeRadiusMultiplier = this.theme === 'cyan' ? 1.2 : 1;
                 const renderRadius = this.radius * themeRadiusMultiplier;
+                const spawnActive = this.isSpawning;
+                const spawnProgress = this.getSpawnProgress();
+                const spawnAlpha = spawnActive ? Math.max(0.15, spawnProgress) : 1;
+                if (spawnActive) {
+                    this._drawSpawnEffect(ctx, renderRadius);
+                }
+
+                ctx.save();
+                ctx.globalAlpha = spawnAlpha;
                 // Priority effects override theme
                 if (this.damageFlash > 0) {
                     ctx.beginPath();
@@ -1637,8 +1762,7 @@
                     ctx.strokeStyle = '#00aa44';
                     ctx.lineWidth = 2;
                     ctx.stroke();
-                } else if (this.invulnerable) {
-                    // Keep invulnerable visual as before
+                } else if (this.invulnerable && !spawnActive) {
                     ctx.beginPath();
                     ctx.arc(this.x, this.y, renderRadius, 0, Math.PI * 2);
                     ctx.fillStyle = '#f0f0ff';
@@ -1647,7 +1771,6 @@
                     ctx.lineWidth = 2;
                     ctx.stroke();
                 } else {
-                    // Apply theme visuals
                     const drawDiamond = () => {
                         ctx.beginPath();
                         ctx.moveTo(this.x, this.y - renderRadius);
@@ -1695,7 +1818,6 @@
                         ctx.stroke();
                         ctx.restore();
                     } else {
-                        // default
                         ctx.save();
                         ctx.beginPath();
                         ctx.arc(this.x, this.y, renderRadius, 0, Math.PI * 2);
@@ -1706,21 +1828,29 @@
                         ctx.restore();
                     }
                 }
+                ctx.restore();
 
+                const textAlpha = spawnActive ? Math.min(1, spawnProgress * 1.5) : 1;
                 const healthColor = this.health > 60 ? '#00ff00' : this.health > 30 ? '#ffaa00' : '#ff0000';
+                ctx.save();
+                ctx.globalAlpha = textAlpha;
                 ctx.fillStyle = healthColor;
                 ctx.font = 'bold 20px Roboto';
                 ctx.textAlign = 'center';
                 ctx.fillText(`HP: ${this.health}`, this.x, this.y + renderRadius + 22);
+                ctx.restore();
 
                 if (this.railgunCharge > 0 && this.blinkState) {
                     const w = renderRadius * 2;
                     const h = 4;
                     const isMax = this.railgunCharge >= 0.95;
+                    ctx.save();
+                    ctx.globalAlpha = spawnAlpha;
                     ctx.fillStyle = isMax ? 'rgba(120, 60, 0, 0.7)' : 'rgba(0, 100, 100, 0.7)';
                     ctx.fillRect(this.x - w/2, this.y - renderRadius - 10, w, h);
                     ctx.fillStyle = isMax ? 'rgba(255, 165, 0, 0.9)' : 'rgba(0, 255, 255, 0.7)';
                     ctx.fillRect(this.x - w/2, this.y - renderRadius - 10, w * this.railgunCharge, h);
+                    ctx.restore();
                 }
             }
         }
@@ -7453,6 +7583,9 @@
                 // Expose && initialize scaling
                 if (typeof window !== 'undefined') { window.game = this; }
                 this.speedScale = 1; // fixed internal resolution; keep motion scale 1
+                this.playerControlsLocked = true;
+                this.playerSpawnActive = false;
+                this.defaultPlayerSpawnDuration = PLAYER_SPAWN_DEFAULT_DURATION;
                 // Theme state
                 this.playerTheme = 'default';
                 try {
@@ -8434,6 +8567,13 @@
                   this.player = new Player(this.canvas);
                   // Apply selected theme to new player instance
                   this.player.theme = this.playerTheme || 'default';
+                if (!this.inLobby) {
+                    this.beginPlayerSpawnAnimation();
+                } else {
+                    this.playerControlsLocked = true;
+                    this.playerSpawnActive = false;
+                    this.player.isSpawning = false;
+                }
                   if (this.gridBlink) {
                       this.gridBlink.startTime = 0;
                       this.gridBlink.activeUntil = 0;
@@ -8541,6 +8681,36 @@
                 }
             }
 
+            lockPlayerControls(options = {}) {
+                const { skipInputClear = false } = options || {};
+                this.playerControlsLocked = true;
+                if (!skipInputClear && this.input) {
+                    this.input.clear();
+                }
+            }
+
+            unlockPlayerControls() {
+                this.playerControlsLocked = false;
+            }
+
+            beginPlayerSpawnAnimation(durationFrames = this.defaultPlayerSpawnDuration) {
+                if (!this.player) return;
+                const frames = Number.isFinite(durationFrames) ? durationFrames : this.defaultPlayerSpawnDuration;
+                this.playerSpawnActive = true;
+                this.lockPlayerControls();
+                if (typeof this.player.beginSpawn === 'function') {
+                    this.player.beginSpawn(frames);
+                } else {
+                    this.player.isSpawning = true;
+                    this.player.spawnDurationFrames = frames;
+                    this.player.spawnElapsedFrames = 0;
+                }
+                this.player.stopRailgunCharge(this.audio);
+                if (this.audio && typeof this.audio.playSound === 'function') {
+                    this.audio.playSound('PlayerFirstSpawn');
+                }
+            }
+
             setupEventListeners() {
                 window.addEventListener('resize', () => {
                     // Recompute uniform scale and letterbox offsets
@@ -8592,6 +8762,7 @@
 
                 document.addEventListener('keydown', e => {
                     const code = e.code;
+                    const controlsLocked = this.playerControlsLocked;
                     if (['Escape', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight'].includes(code)) {
                         e.preventDefault();
                     }
@@ -8633,7 +8804,7 @@
                             }
                         }
                     }
-                    if (code === 'Space' && !this.gameOver && !this.inLobby && this.upgradePause && this.upgradeOverlayHiddenByPause) {
+                    if (code === 'Space' && !this.gameOver && !this.inLobby && !controlsLocked && this.upgradePause && this.upgradeOverlayHiddenByPause) {
                         if (this.input.preventSpam('pause', 200)) {
                             this.restoreUpgradeOverlayAfterPause();
                         }
@@ -8657,7 +8828,7 @@
                         }
                     }
                     // Place mine on SPACE during gameplay
-                    if (!this.gameOver && !this.paused && !this.inLobby) {
+                    if (!this.gameOver && !this.paused && !this.inLobby && !controlsLocked) {
                         if (code === 'Space') {
                             this.placeMine();
                         }
@@ -8670,8 +8841,8 @@
                             'KeyD': 'd', 'ArrowRight': 'd',
                             'ShiftLeft': 'shift', 'ShiftRight': 'shift'
                         };
-                        if (moveKeys[code]) this.input.keys[moveKeys[code]] = true;
-                        if (code === 'ShiftLeft' || code === 'ShiftRight') {
+                        if (!controlsLocked && moveKeys[code]) this.input.keys[moveKeys[code]] = true;
+                        if (!controlsLocked && (code === 'ShiftLeft' || code === 'ShiftRight')) {
                             if (this.input.preventSpam('dash', 500)) {
                                 this.player.startDash(this.input.keys, this.effects, this.audio);
                             }
@@ -8714,6 +8885,7 @@
 
                 this.canvas.addEventListener('mousedown', e => {
                     if (this.gameOver || this.inLobby) return;
+                    if (this.playerControlsLocked) return;
                     if (!this.paused) {
                         if (e.button === 0) this.input.mouse.down = true;
                         else if (e.button === 1) { this.input.mouse.middleDown = true; if (this.launchRocket) this.launchRocket(); e.preventDefault(); }
@@ -8841,6 +9013,7 @@
             }
 
             placeMine() {
+                if (this.playerControlsLocked) return;
                 const now = Date.now();
                 const t = Math.max(0.001, getTimeScale());
                 if (now - this.lastMinePlaced < this.mineCooldownMs / t) return;
@@ -8854,6 +9027,7 @@
             }
 
             shoot() {
+                if (this.playerControlsLocked) return;
                 const now = Date.now();
                 if (now - this.lastShot < this.shootDelay / Math.max(0.001, getTimeScale())) return;
                 const dx = this.input.mouse.x - this.player.x;
@@ -8873,6 +9047,7 @@
             }
 
             launchRocket() {
+                if (this.playerControlsLocked) return;
                 const now = Date.now();
                 const t = Math.max(0.001, getTimeScale());
                 if (now - this.lastRocketShot < this.rocketCooldownMs / t) {
@@ -9371,8 +9546,18 @@
                 }
                 
                 // Continue all normal game mechanics regardless of wave pause
-                this.player.move(this.input.keys, this.canvas);
+                if (!this.playerControlsLocked) {
+                    this.player.move(this.input.keys, this.canvas);
+                }
                 this.player.update(this.input, this.effects, this.canvas, this.audio);
+                if (this.playerSpawnActive && this.player && !this.player.isSpawning) {
+                    this.playerSpawnActive = false;
+                    this.unlockPlayerControls();
+                    this.controlsInfoAutoHideTriggered = false;
+                    if (this.uiManager && this.uiManager.showControlsInfo) {
+                        this.uiManager.showControlsInfo();
+                    }
+                }
 
                 // Update Tetris Cross boss and its pieces if active
                 if (this.inBossPhase && this.activeBoss && this.activeBoss instanceof TetrisCrossBoss) {
@@ -9389,7 +9574,7 @@
                 // Update background parallax based on player movement
                 this.updateBackgroundParallax();
                 
-                if (this.input.mouse.down) this.shoot();
+                if (!this.playerControlsLocked && this.input.mouse.down) this.shoot();
                 // Update rockets
                 {
                     const pendingBossRocketExplosions = [];
