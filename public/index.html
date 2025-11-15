@@ -33,19 +33,19 @@
             z-index: 90;
             visibility: hidden;
             opacity: 0;
-            background: radial-gradient(
-                circle at center,
-                rgba(0, 0, 0, 0) 58%,
-                rgba(255, 60, 60, calc(var(--danger-frame-alpha, 0) * 0.18)) 78%,
-                rgba(180, 0, 0, calc(var(--danger-frame-alpha, 0) * 0.35)) 100%
-            );
-            box-shadow:
-                inset 0 0 40px rgba(255, 48, 48, calc(var(--danger-frame-alpha, 0) * 0.45)),
-                inset 0 0 110px rgba(140, 0, 0, calc(var(--danger-frame-alpha, 0) * 0.32));
-            transition: opacity 0.35s ease, filter 0.35s ease;
+            --danger-frame-blur: clamp(36px, 8vw, 120px);
+            background:
+                radial-gradient(circle at 50% 35%, rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.28)) 0%, rgba(0, 0, 0, 0) 50%),
+                radial-gradient(circle at 50% 70%, rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.22)) 0%, rgba(0, 0, 0, 0) 58%),
+                linear-gradient(90deg, rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.08)) 0%, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0) 65%, rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.08)) 100%),
+                linear-gradient(0deg, rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.05)), rgba(0, 0, 0, 0));
+            background-blend-mode: screen;
+            filter: saturate(1.25) drop-shadow(0 0 calc(var(--danger-frame-blur) / 2) rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.3)));
+            transition: opacity 0.32s ease, filter 0.32s ease;
             will-change: opacity;
             transform: translateZ(0);
             contain: layout paint style;
+            isolation: isolate;
         }
 
         .danger-frame.active {
@@ -56,20 +56,56 @@
         .danger-frame::before {
             content: '';
             position: absolute;
-            inset: clamp(0px, 0.6vw, 10px);
-            border-radius: 10px;
-            border: 1px solid rgba(255, 80, 80, calc(var(--danger-frame-alpha, 0) * 0.7));
+            inset: clamp(0px, 0.8vw, 18px);
+            border-radius: clamp(8px, 1.8vw, 28px);
+            border: 1px solid rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.85));
             box-shadow:
-                0 0 25px rgba(255, 70, 70, calc(var(--danger-frame-alpha, 0) * 0.7)),
-                0 0 60px rgba(180, 0, 0, calc(var(--danger-frame-alpha, 0) * 0.4)),
-                inset 0 0 25px rgba(255, 70, 70, calc(var(--danger-frame-alpha, 0) * 0.45));
-            opacity: calc(var(--danger-frame-alpha, 0));
-            transition: opacity 0.35s ease;
+                0 0 30px rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.6)),
+                0 0 70px rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.45)),
+                inset 0 0 35px rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.55));
+            background:
+                linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 35%, rgba(255, 255, 255, 0) 65%, rgba(255, 255, 255, 0.18)),
+                radial-gradient(circle at top, rgba(var(--danger-frame-color-rgb, 255, 70, 70), calc(var(--danger-frame-alpha, 0) * 0.25)), transparent 60%);
+            opacity: calc(var(--danger-frame-alpha, 0) * 0.9);
+            transition: opacity 0.32s ease;
+            mix-blend-mode: screen;
+        }
+
+        .danger-frame::after {
+            content: '';
+            position: absolute;
+            inset: clamp(-6px, -0.6vw, -2px);
+            background: repeating-linear-gradient(130deg, rgba(var(--danger-frame-color-rgb, 255, 70, 70), 0.14) 0 18px, rgba(var(--danger-frame-color-rgb, 255, 70, 70), 0.02) 18px 36px);
+            opacity: calc(var(--danger-frame-alpha, 0) * 0.75);
+            mix-blend-mode: screen;
+            filter: blur(0.4px);
+            animation: dangerFrameSweep 2.8s linear infinite;
+            animation-play-state: paused;
+            mask-image: radial-gradient(circle at center, transparent 45%, black 68%);
+            -webkit-mask-image: radial-gradient(circle at center, transparent 45%, black 68%);
+            transition: opacity 0.32s ease;
+        }
+
+        .danger-frame.active::after {
+            animation-play-state: running;
+        }
+
+        @keyframes dangerFrameSweep {
+            from {
+                background-position: 0 0;
+            }
+            to {
+                background-position: -180px 180px;
+            }
         }
 
         @media (prefers-reduced-motion: reduce) {
             .danger-frame {
                 transition: opacity 0.15s linear;
+            }
+            .danger-frame::after {
+                animation: none;
+                background-position: 0 0;
             }
         }
         
@@ -174,6 +210,7 @@
             --theme-name-gap: 8px;      /* space between circle and name */
             --theme-option-width: 80px; /* fixed width per option to keep symmetry */
             --danger-frame-alpha: 0;
+            --danger-frame-color-rgb: 255, 70, 70;
         }
 
         .lobby {
