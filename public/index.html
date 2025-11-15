@@ -33,10 +33,8 @@
             z-index: 90;
             visibility: hidden;
             opacity: 0;
-            transform: scale(0.5);
-            transform-origin: center;
-            background: radial-gradient(circle at center, rgba(0, 0, 0, 0) 55%, rgba(255, 60, 60, 0.084) 72%, rgba(180, 0, 0, 0.21) 100%);
-            box-shadow: inset 0 0 80px rgba(255, 40, 40, 0.245), inset 0 0 220px rgba(140, 0, 0, 0.14);
+            background: radial-gradient(circle at center, rgba(0, 0, 0, 0) 58%, rgba(255, 60, 60, 0.059) 78%, rgba(180, 0, 0, 0.147) 100%);
+            box-shadow: inset 0 0 80px rgba(255, 40, 40, 0.172), inset 0 0 220px rgba(140, 0, 0, 0.098);
         }
 
         .danger-frame.active {
@@ -47,19 +45,19 @@
         .danger-frame::before {
             content: '';
             position: absolute;
-            inset: clamp(10px, 2vw, 28px);
-            border-radius: 12px;
-            border: 2px solid rgba(255, 80, 80, 0.245);
+            inset: clamp(0px, 0.6vw, 10px);
+            border-radius: 10px;
+            border: 1px solid rgba(255, 80, 80, 0.172);
             box-shadow:
-                0 0 28px rgba(255, 70, 70, 0.28),
-                0 0 80px rgba(180, 0, 0, 0.245),
-                inset 0 0 35px rgba(255, 70, 70, 0.175);
+                0 0 28px rgba(255, 70, 70, 0.196),
+                0 0 80px rgba(180, 0, 0, 0.172),
+                inset 0 0 35px rgba(255, 70, 70, 0.123);
         }
 
         @keyframes dangerFramePulse {
-            0% { opacity: 0.525; }
-            50% { opacity: 0.7; }
-            100% { opacity: 0.525; }
+            0% { opacity: 0.368; }
+            50% { opacity: 0.49; }
+            100% { opacity: 0.368; }
         }
         
         .ui {
