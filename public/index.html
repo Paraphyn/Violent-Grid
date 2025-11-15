@@ -452,30 +452,14 @@
             pointer-events: none;
         }
         .theme-option.locked .circle.theme-rainbow {
-            background: repeating-linear-gradient(135deg, #1b1b1b, #1b1b1b 6px, #2c2c2c 6px, #2c2c2c 12px) !important;
-            border-color: #555555 !important;
-            box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.8) !important;
+            background: #050505 !important;
+            border-color: #1f1f1f !important;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.45) !important;
             filter: none !important;
         }
         .theme-option.locked .circle.theme-rainbow::after {
-            border-color: rgba(255, 255, 255, 0.12);
-            box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.65);
-        }
-        .theme-option.locked .circle.theme-rainbow::before {
-            content: 'LOCKED';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 9px;
-            font-weight: 600;
-            letter-spacing: 0.18em;
-            color: #d3d3d3;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 2px 6px 1px;
-            border-radius: 4px;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
-            pointer-events: none;
+            border-color: rgba(255, 255, 255, 0.08);
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.65);
         }
         @keyframes squareTomPulse {
             0% {
