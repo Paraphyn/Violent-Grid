@@ -34,11 +34,19 @@
             background: radial-gradient(
                 circle at center,
                 rgba(255, 0, 0, 0) calc(100% - 220px),
-                rgba(255, 45, 45, 0.18) calc(100% - 140px),
-                rgba(255, 30, 30, 0.35) calc(100% - 70px),
-                rgba(255, 20, 20, 0.55) 100%
+                rgba(255, 45, 45, 0.054) calc(100% - 140px),
+                rgba(255, 30, 30, 0.105) calc(100% - 70px),
+                rgba(255, 20, 20, 0.165) 100%
             );
-            box-shadow: inset 0 0 90px rgba(255, 10, 10, 0.4);
+            box-shadow: inset 0 0 90px rgba(255, 10, 10, 0.12);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.35s ease;
+        }
+
+        .red-gradient-border.active {
+            opacity: 1;
+            visibility: visible;
         }
         
         .ui {
@@ -8141,6 +8149,7 @@
                 this.inLobby = false;
                 document.getElementById('lobby').classList.add('hidden');
                 this.uiManager.showUI();
+                this.toggleRedBorder(true);
                 
                 // Initialize upgrades on first game start; reset afterwards
                 if (!this.upgradeManager) {
@@ -8171,6 +8180,7 @@
                 
                 // Hide game UI && clear input
                 this.uiManager.hideUI();
+                this.toggleRedBorder(false);
                 this.input.clear();
                 
                 // Stop game music && start lobby music
@@ -8205,13 +8215,21 @@
                 } catch (e) {}
             }
 
-                reset() {
-                    this._clearGameOverVoiceTimeout();
-                    this.input.clear();
-                    this.upgradePause = false;
-                    this.upgradeOverlayHiddenByPause = false;
-                    const overlay = document.getElementById('upgradeOverlay');
-                    if (overlay) {
+            toggleRedBorder(isActive) {
+                if (!this.redBorderElement) {
+                    this.redBorderElement = document.querySelector('.red-gradient-border');
+                }
+                if (!this.redBorderElement) return;
+                this.redBorderElement.classList.toggle('active', Boolean(isActive));
+            }
+
+            reset() {
+                this._clearGameOverVoiceTimeout();
+                this.input.clear();
+                this.upgradePause = false;
+                this.upgradeOverlayHiddenByPause = false;
+                const overlay = document.getElementById('upgradeOverlay');
+                if (overlay) {
                         overlay.classList.remove('visible');
                     }
                   this.player = new Player(this.canvas);
